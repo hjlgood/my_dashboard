@@ -625,6 +625,18 @@ function commonChartOption(model, yName) {
     legend: { top: 3, left: 4, textStyle: { color: "#aeb8bb", fontSize: 10 }, itemWidth: 16, itemHeight: 7 },
     tooltip: {
       trigger: "axis",
+      axisPointer: {
+        type: "cross",
+        snap: true,
+        lineStyle: { color: "#aeb8bb", width: 1, type: "dashed" },
+        crossStyle: { color: "#aeb8bb", width: 1, type: "dashed" },
+        label: {
+          show: true,
+          backgroundColor: "#263238",
+          color: "#e7edef",
+          fontSize: 10,
+        },
+      },
       backgroundColor: "rgba(3,6,7,0.96)",
       borderColor: "#4a5559",
       textStyle: { color: "#e7edef", fontSize: 11 },
