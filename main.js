@@ -8,6 +8,7 @@ const MODEL = Object.freeze({
   growthSpread: 0.06,
   forwardRevenueWeight: 0.50,
   bearMultipleDiscount: 0.25,
+  maxPeMultiple: 100,
   yields: [0.03, 0.04, 0.05, 0.06, 0.08],
 });
 
@@ -386,8 +387,13 @@ function buildDashboardModel(payload, ticker) {
   };
 
   const adjustedAnchors = fundamentals.filter((row) => finite(row.adjustedFcfPerShare));
+  const adjustedFcfSpline = createPchipInterpolator(
+    adjustedAnchors,
+    "adjustedFcfPerShare",
+    true,
+  );
   const valuationMultiples = prices.map((row) => {
-    const driver = interpolatedValue(adjustedAnchors, row.date, "adjustedFcfPerShare", true);
+    const driver = adjustedFcfSpline(row.date);
     return driver > 0 ? row.value / driver : NaN;
   }).filter((value) => finite(value) && value > 0);
   let q25;
@@ -475,20 +481,92 @@ function buildDashboardModel(payload, ticker) {
   };
 }
 
-function interpolatedValue(rows, targetDate, field, carryBeforeFirst = false) {
-  const clean = rows.filter((row) => finite(row[field])).sort((a, b) => a.date.localeCompare(b.date));
-  if (!clean.length) return NaN;
-  const target = new Date(targetDate).getTime();
-  if (target <= new Date(clean[0].date).getTime()) return carryBeforeFirst ? clean[0][field] : NaN;
-  if (target >= new Date(clean.at(-1).date).getTime()) return clean.at(-1)[field];
-  for (let index = 1; index < clean.length; index += 1) {
-    const rightTime = new Date(clean[index].date).getTime();
-    if (rightTime < target) continue;
-    const leftTime = new Date(clean[index - 1].date).getTime();
-    const fraction = (target - leftTime) / (rightTime - leftTime);
-    return clean[index - 1][field] + fraction * (clean[index][field] - clean[index - 1][field]);
+function utcDay(dateString) {
+  return Date.parse(`${dateString}T00:00:00Z`) / 86400000;
+}
+
+function pchipEndpointSlope(h0, h1, slope0, slope1) {
+  let derivative = ((2 * h0 + h1) * slope0 - h0 * slope1) / (h0 + h1);
+  if (Math.sign(derivative) !== Math.sign(slope0)) {
+    derivative = 0;
+  } else if (
+    Math.sign(slope0) !== Math.sign(slope1)
+    && Math.abs(derivative) > Math.abs(3 * slope0)
+  ) {
+    derivative = 3 * slope0;
   }
-  return NaN;
+  return derivative;
+}
+
+function createPchipInterpolator(rows, field, carryBeforeFirst = false) {
+  const unique = new Map(
+    rows
+      .filter((row) => row.date && finite(row[field]))
+      .map((row) => [row.date, row]),
+  );
+  const clean = [...unique.values()].sort((a, b) => a.date.localeCompare(b.date));
+  if (!clean.length) return () => NaN;
+
+  const x = clean.map((row) => utcDay(row.date));
+  const y = clean.map((row) => row[field]);
+  if (clean.length === 1) {
+    return (targetDate) => {
+      const target = utcDay(targetDate);
+      return target >= x[0] || carryBeforeFirst ? y[0] : NaN;
+    };
+  }
+
+  const h = x.slice(0, -1).map((value, index) => x[index + 1] - value);
+  const segmentSlopes = h.map((width, index) => (y[index + 1] - y[index]) / width);
+  const derivatives = new Array(clean.length).fill(0);
+  if (clean.length === 2) {
+    derivatives[0] = segmentSlopes[0];
+    derivatives[1] = segmentSlopes[0];
+  } else {
+    derivatives[0] = pchipEndpointSlope(h[0], h[1], segmentSlopes[0], segmentSlopes[1]);
+    derivatives[derivatives.length - 1] = pchipEndpointSlope(
+      h.at(-1),
+      h.at(-2),
+      segmentSlopes.at(-1),
+      segmentSlopes.at(-2),
+    );
+    for (let index = 1; index < clean.length - 1; index += 1) {
+      const leftSlope = segmentSlopes[index - 1];
+      const rightSlope = segmentSlopes[index];
+      if (leftSlope === 0 || rightSlope === 0 || Math.sign(leftSlope) !== Math.sign(rightSlope)) {
+        derivatives[index] = 0;
+        continue;
+      }
+      const leftWeight = 2 * h[index] + h[index - 1];
+      const rightWeight = h[index] + 2 * h[index - 1];
+      derivatives[index] = (leftWeight + rightWeight)
+        / (leftWeight / leftSlope + rightWeight / rightSlope);
+    }
+  }
+
+  return (targetDate) => {
+    const target = utcDay(targetDate);
+    if (target < x[0]) return carryBeforeFirst ? y[0] : NaN;
+    if (target >= x.at(-1)) return y.at(-1);
+
+    let low = 0;
+    let high = x.length - 1;
+    while (high - low > 1) {
+      const midpoint = Math.floor((low + high) / 2);
+      if (x[midpoint] <= target) low = midpoint;
+      else high = midpoint;
+    }
+    const width = h[low];
+    const fraction = (target - x[low]) / width;
+    const fraction2 = fraction * fraction;
+    const fraction3 = fraction2 * fraction;
+    return (
+      (2 * fraction3 - 3 * fraction2 + 1) * y[low]
+      + (fraction3 - 2 * fraction2 + fraction) * width * derivatives[low]
+      + (-2 * fraction3 + 3 * fraction2) * y[low + 1]
+      + (fraction3 - fraction2) * width * derivatives[low + 1]
+    );
+  };
 }
 
 function solveGrowth(currentPrice, fcfPerShare, requiredReturn, terminalMultiple, years) {
@@ -623,12 +701,13 @@ function renderFcfChart(model) {
   if (finite(model.currentAdjustedFcfPerShare) && finite(model.baseGrowth)) {
     anchors.push({ date: futureDate, adjustedFcfPerShare: model.currentAdjustedFcfPerShare * (1 + model.baseGrowth) });
   }
+  const fcfSpline = createPchipInterpolator(anchors, "adjustedFcfPerShare", true);
   const dates = model.prices.map((row) => row.date);
   for (let cursor = addDays(currentDate, 7); cursor <= futureDate; cursor = addDays(cursor, 7)) dates.push(cursor);
   if (!dates.includes(futureDate)) dates.push(futureDate);
   const uniqueDates = [...new Set(dates)].sort();
   const paths = MODEL.yields.map((yieldValue) => uniqueDates.map((date) => {
-    const driver = interpolatedValue(anchors, date, "adjustedFcfPerShare", true);
+    const driver = fcfSpline(date);
     return [date, driver > 0 ? driver / yieldValue : NaN];
   }));
   for (let index = 0; index < paths.length - 1; index += 1) {
@@ -682,26 +761,57 @@ function renderFcfChart(model) {
 
 function calculateValuationBand(model, field, analystDriver) {
   const anchors = model.fundamentals.filter((row) => finite(row[field]));
+  const historicalSpline = createPchipInterpolator(anchors, field, true);
   const historical = model.prices.map((row) => {
-    const driver = interpolatedValue(anchors, row.date, field, true);
+    const driver = historicalSpline(row.date);
     return { date: row.date, price: row.value, driver, multiple: driver > 0 ? row.value / driver : NaN };
   });
-  const multiples = historical.map((row) => row.multiple).filter((value) => finite(value) && value > 0);
-  if (multiples.length < 30) return { historical, levels: [], paths: [] };
+  const rawMultiples = historical.map((row) => row.multiple).filter((value) => finite(value) && value > 0);
+  const multipleCap = field === "eps" ? MODEL.maxPeMultiple : NaN;
+  const multiples = finite(multipleCap)
+    ? rawMultiples.filter((value) => value <= multipleCap)
+    : rawMultiples;
+  const excludedCount = rawMultiples.length - multiples.length;
+  const currentDate = model.prices.at(-1).date;
+  const currentDriver = historicalSpline(currentDate);
+  if (multiples.length < 30) {
+    return {
+      historical,
+      levels: [],
+      paths: [],
+      currentDriver,
+      multipleCap,
+      excludedCount,
+    };
+  }
   const low = quantile(multiples, 0.05);
   const high = quantile(multiples, 0.95);
   const clipped = multiples.map((value) => clamp(value, low, high));
   const levels = [0.10, 0.25, 0.50, 0.75, 0.90].map((q) => quantile(clipped, q));
-  const currentDate = model.prices.at(-1).date;
   const futureDate = addYears(currentDate, 1);
-  const currentDriver = interpolatedValue(anchors, currentDate, field, true);
+  let projectionDrivers = [];
+  if (analystDriver > 0 && currentDriver > 0) {
+    const projectionAnchors = [
+      ...anchors,
+      { date: currentDate, [field]: currentDriver },
+      { date: futureDate, [field]: analystDriver },
+    ];
+    const projectionSpline = createPchipInterpolator(projectionAnchors, field, true);
+    for (let date = addDays(currentDate, 7); date < futureDate; date = addDays(date, 7)) {
+      projectionDrivers.push([date, projectionSpline(date)]);
+    }
+    projectionDrivers.push([futureDate, analystDriver]);
+  }
   const paths = levels.map((level) => {
     const path = historical.map((row) => [row.date, row.driver > 0 ? row.driver * level : NaN]);
-    if (analystDriver > 0 && currentDriver > 0) path.push([futureDate, analystDriver * level]);
-    else if (analystDriver > 0) path.push([futureDate, analystDriver * level]);
+    if (projectionDrivers.length) {
+      path.push(...projectionDrivers.map(([date, driver]) => [date, driver * level]));
+    } else if (analystDriver > 0) {
+      path.push([currentDate, NaN], [futureDate, analystDriver * level]);
+    }
     return path;
   });
-  return { historical, levels, paths, currentDriver };
+  return { historical, levels, paths, currentDriver, multipleCap, excludedCount };
 }
 
 function renderMultipleChart(model, elementId, captionId, field, name, analystDriver, analystLabel) {
@@ -735,11 +845,18 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
   }
   setChart(elementId, option);
   const currentMultiple = calculation.currentDriver > 0 ? model.currentPrice / calculation.currentDriver : NaN;
-  setCaption(captionId, [
+  const captionEntries = [
     [`Current ${name}`, formatMultiple(currentMultiple)],
     ["Historical median", formatMultiple(calculation.levels[2])],
     [analystLabel, `${formatMoney(analystDriver, model.currency)} (${forwardChange(calculation.currentDriver, analystDriver)})`],
-  ]);
+  ];
+  if (finite(calculation.multipleCap)) {
+    captionEntries.push([
+      "PER band rule",
+      `>${formatMultiple(calculation.multipleCap, 0)} excluded (${calculation.excludedCount} days)`,
+    ]);
+  }
+  setCaption(captionId, captionEntries);
 }
 
 function normalizedSeries(rows, field) {
@@ -858,13 +975,19 @@ function renderDashboard(model, payload, responseStatus, elapsedMs) {
   renderFundamentalsChart(model);
   renderMetrics(model);
   const endpointSummary = Object.fromEntries(Object.entries(payload.data || {}).map(([name, item]) => [name, {
-    status: item.status, ok: item.ok, attempts: item.attempts, waitedMs: item.waitedMs, error: item.error,
+    status: item.status,
+    ok: item.ok,
+    attempts: item.attempts,
+    waitedMs: item.waitedMs,
+    error: item.error,
+    auth: item.auth,
   }]));
   dom.diagnostic.textContent = JSON.stringify({
     ticker: model.ticker,
     httpStatus: responseStatus,
     elapsedMs,
     source: payload.source,
+    requestPlan: payload.requestPlan,
     endpointSummary,
     model: {
       currentAdjustedFcfPerShare: model.currentAdjustedFcfPerShare,
@@ -874,6 +997,7 @@ function renderDashboard(model, payload, responseStatus, elapsedMs) {
       baseGrowth: model.baseGrowth,
       growthScenarios: model.growthScenarios,
       exitMultiples: model.exitMultiples,
+      valuationCaps: { maxPeMultiple: MODEL.maxPeMultiple },
       scenarios: model.scenarios,
       reverseImpliedGrowth: model.reverseImpliedGrowth,
       baseImpliedIrr: model.baseImpliedIrr,
@@ -930,9 +1054,18 @@ async function analyze(event) {
     const model = buildDashboardModel(payload, ticker);
     const elapsed = performance.now() - started;
     renderDashboard(model, payload, response.status, Math.round(elapsed));
-    const failed = Object.entries(payload.data).filter(([, item]) => !item.ok).map(([name]) => name);
-    if (failed.length) setStatus("warning", `${ticker}: 표시 완료 · 일부 endpoint 실패 (${failed.join(", ")})`, `${(elapsed / 1000).toFixed(1)}s`);
-    else setStatus("success", `${ticker}: dashboard ready`, `${(elapsed / 1000).toFixed(1)}s`);
+    const failed = Object.entries(payload.data).filter(([, item]) => !item.ok).map(([name, item]) =>
+      `${name}${item.status ? ` HTTP ${item.status}` : ""}`
+    );
+    const quoteAuth = payload.data.quote?.auth;
+    if (failed.length) {
+      setStatus("warning", `${ticker}: 표시 완료 · 일부 endpoint 실패 (${failed.join(", ")})`, `${(elapsed / 1000).toFixed(1)}s`);
+    } else if (quoteAuth?.refreshedAfter401) {
+      setStatus("success", `${ticker}: dashboard ready · Yahoo session refreshed after 401`, `${(elapsed / 1000).toFixed(1)}s`);
+    } else {
+      const sessionText = quoteAuth?.session === "reused" ? " · Yahoo session reused" : "";
+      setStatus("success", `${ticker}: dashboard ready${sessionText}`, `${(elapsed / 1000).toFixed(1)}s`);
+    }
     history.replaceState(null, "", `${location.pathname}?ticker=${encodeURIComponent(ticker)}&worker=${encodeURIComponent(workerUrl)}`);
   } catch (error) {
     const elapsed = performance.now() - started;
