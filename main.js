@@ -28,6 +28,7 @@ const COLORS = Object.freeze({
 
 const YIELD_COLORS = [COLORS.red, COLORS.orange, COLORS.yellow, COLORS.lime, COLORS.green];
 const BAND_COLORS = [COLORS.green, COLORS.lime, COLORS.yellow, COLORS.orange, COLORS.red];
+const BAND_SMOOTH = 0.80;
 const chartInstances = new Map();
 
 const dom = {
@@ -40,7 +41,6 @@ const dom = {
   elapsed: document.querySelector("#elapsed-text"),
   title: document.querySelector("#company-title"),
   marketSummary: document.querySelector("#market-summary"),
-  empty: document.querySelector("#empty-state"),
   dashboard: document.querySelector("#dashboard"),
   diagnostic: document.querySelector("#diagnostic-output"),
 };
@@ -645,9 +645,12 @@ function commonChartOption(model, yName) {
       name: yName,
       nameTextStyle: { color: "#919da1", fontSize: 10, padding: [0, 0, 0, 4] },
       scale: true,
+      splitNumber: 16,
       axisLine: { show: true, lineStyle: { color: "#687277" } },
-      axisLabel: { color: "#8f9a9e", fontSize: 10 },
+      axisLabel: { color: "#8f9a9e", fontSize: 9, hideOverlap: true },
       splitLine: { lineStyle: { color: COLORS.grid } },
+      minorTick: { show: true, splitNumber: 4 },
+      minorSplitLine: { show: true, lineStyle: { color: "rgba(122,122,122,0.08)", width: 0.6 } },
     },
     series: [],
   };
@@ -719,7 +722,8 @@ function renderFcfChart(model) {
     type: "line",
     data: path,
     showSymbol: false,
-    smooth: 0.28,
+    smooth: BAND_SMOOTH,
+    smoothMonotone: "x",
     connectNulls: false,
     lineStyle: { color: YIELD_COLORS[index], width: 1.05, type: "dashed" },
     itemStyle: { color: YIELD_COLORS[index] },
@@ -826,7 +830,8 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
       type: "line",
       data: path,
       showSymbol: false,
-      smooth: 0.28,
+      smooth: BAND_SMOOTH,
+      smoothMonotone: "x",
       connectNulls: false,
       lineStyle: { color: BAND_COLORS[index], width: 1, type: "dashed" },
       itemStyle: { color: BAND_COLORS[index] },
@@ -873,11 +878,13 @@ function renderFundamentalsChart(model) {
   option.grid.right = 68;
   option.tooltip.valueFormatter = (value) => finite(rawNumber(value)) ? rawNumber(value).toFixed(1) : "N/A";
   option.yAxis = [option.yAxis, {
-    type: "value", name: "ROIC", position: "right", scale: true,
+    type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 10,
     nameTextStyle: { color: COLORS.purple, fontSize: 10 },
     axisLine: { show: true, lineStyle: { color: COLORS.purple } },
-    axisLabel: { color: COLORS.purple, formatter: "{value}%", fontSize: 10 },
+    axisLabel: { color: COLORS.purple, formatter: "{value}%", fontSize: 9, hideOverlap: true },
     splitLine: { show: false },
+    minorTick: { show: true, splitNumber: 4 },
+    minorSplitLine: { show: true, lineStyle: { color: "rgba(192,92,255,0.10)", width: 0.6 } },
   }];
   const definitions = [
     ["Revenue/share", "revenuePerShare", COLORS.cyan],
@@ -967,7 +974,6 @@ function setChart(id, option) {
 function renderDashboard(model, payload, responseStatus, elapsedMs) {
   dom.title.textContent = `${model.company} (${model.ticker})`;
   dom.marketSummary.textContent = `${formatMoney(model.currentPrice, model.currency)} · Market cap ${formatCompactMoney(model.marketCap, model.currency)} · ${model.prices.at(-1).date}`;
-  dom.empty.hidden = true;
   dom.dashboard.hidden = false;
   renderFcfChart(model);
   renderMultipleChart(model, "per-chart", "per-caption", "eps", "PER", model.analystEps, "Analyst +1Y EPS/share avg");

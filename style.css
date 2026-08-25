@@ -227,38 +227,6 @@ button {
   color: #667377;
 }
 
-.empty-state {
-  display: grid;
-  min-height: 330px;
-  place-items: center;
-  align-content: center;
-  border: 1px dashed #273237;
-  border-radius: 8px;
-  background: rgba(8, 12, 14, 0.62);
-  padding: 38px;
-  text-align: center;
-}
-
-.empty-mark {
-  color: rgba(36, 216, 239, 0.55);
-  font-size: 4rem;
-  line-height: 1;
-}
-
-.empty-state h2 {
-  margin: 8px 0 7px;
-  color: #dce4e6;
-  font-size: 1.05rem;
-}
-
-.empty-state p {
-  max-width: 570px;
-  margin: 0;
-  color: #7f8c90;
-  font-size: 0.82rem;
-  line-height: 1.7;
-}
-
 .dashboard {
   display: grid;
   gap: 13px;
