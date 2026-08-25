@@ -29,6 +29,8 @@ const COLORS = Object.freeze({
 const YIELD_COLORS = [COLORS.red, COLORS.orange, COLORS.yellow, COLORS.lime, COLORS.green];
 const BAND_COLORS = [COLORS.green, COLORS.lime, COLORS.yellow, COLORS.orange, COLORS.red];
 const BAND_SMOOTH = 0.80;
+const CHART_GRID = Object.freeze({ left: 64, right: 68, top: 44, bottom: 53 });
+const HORIZONTAL_CROSSHAIR_ID = "manual-horizontal-crosshair";
 const chartInstances = new Map();
 
 const dom = {
@@ -621,7 +623,7 @@ function commonChartOption(model, yName) {
     animation: false,
     backgroundColor: "transparent",
     textStyle: { color: COLORS.text, fontFamily: "Inter, Noto Sans KR, sans-serif" },
-    grid: { left: 64, right: 68, top: 44, bottom: 53, containLabel: false },
+    grid: { ...CHART_GRID, containLabel: false },
     legend: { top: 3, left: 4, textStyle: { color: "#aeb8bb", fontSize: 10 }, itemWidth: 16, itemHeight: 7 },
     tooltip: {
       trigger: "axis",
@@ -986,12 +988,84 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" })[character]);
 }
 
+function chartGridRect(chart) {
+  const coordinateRect = chart.getModel?.().getComponent?.("grid", 0)?.coordinateSystem?.getRect?.();
+  if (coordinateRect && [coordinateRect.x, coordinateRect.y, coordinateRect.width, coordinateRect.height].every(finite)) {
+    return coordinateRect;
+  }
+  return {
+    x: CHART_GRID.left,
+    y: CHART_GRID.top,
+    width: Math.max(0, chart.getWidth() - CHART_GRID.left - CHART_GRID.right),
+    height: Math.max(0, chart.getHeight() - CHART_GRID.top - CHART_GRID.bottom),
+  };
+}
+
+function installHorizontalCrosshair(chart) {
+  if (typeof chart.getZr !== "function" || chart.__horizontalCrosshairInstalled) return;
+  chart.__horizontalCrosshairInstalled = true;
+  const zr = chart.getZr();
+  let pendingY = NaN;
+  let frameId = null;
+
+  const setGraphic = (invisible, y = NaN) => {
+    const rect = chartGridRect(chart);
+    chart.setOption({
+      graphic: [{
+        id: HORIZONTAL_CROSSHAIR_ID,
+        type: "line",
+        shape: {
+          x1: rect.x,
+          y1: y,
+          x2: rect.x + rect.width,
+          y2: y,
+        },
+        style: { stroke: "#aeb8bb", lineWidth: 1, lineDash: [5, 4] },
+        invisible,
+        silent: true,
+        z: 100,
+      }],
+    }, { lazyUpdate: true });
+  };
+
+  const flush = () => {
+    frameId = null;
+    if (finite(pendingY)) setGraphic(false, pendingY);
+  };
+
+  const schedule = () => {
+    if (frameId !== null) return;
+    const requestFrame = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0));
+    frameId = requestFrame(flush);
+  };
+
+  zr.on("mousemove", (event) => {
+    const x = finite(event?.zrX) ? event.zrX : rawNumber(event?.offsetX);
+    const y = finite(event?.zrY) ? event.zrY : rawNumber(event?.offsetY);
+    if (!finite(x) || !finite(y)) return;
+    const rect = chartGridRect(chart);
+    if (x < rect.x || x > rect.x + rect.width || y < rect.y || y > rect.y + rect.height) {
+      pendingY = NaN;
+      setGraphic(true);
+      return;
+    }
+    pendingY = clamp(y, rect.y, rect.y + rect.height);
+    schedule();
+  });
+
+  zr.on("globalout", () => {
+    pendingY = NaN;
+    setGraphic(true);
+  });
+}
+
 function setChart(id, option) {
   if (!window.echarts) throw new Error("ECharts failed to load from the CDN.");
   let chart = chartInstances.get(id);
   if (!chart) {
     chart = window.echarts.init(document.getElementById(id), null, { renderer: "canvas" });
     chartInstances.set(id, chart);
+    installHorizontalCrosshair(chart);
   }
   chart.clear();
   chart.setOption(option, { notMerge: true });
