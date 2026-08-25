@@ -673,11 +673,7 @@ function commonChartOption(model, yName) {
       minorTick: { show: true, splitNumber: 4 },
       minorSplitLine: { show: true, lineStyle: { color: "rgba(122,122,122,0.08)", width: 0.6 } },
       axisPointer: {
-        show: true,
-        type: "line",
-        snap: true,
-        triggerTooltip: true,
-        lineStyle: { color: "#aeb8bb", width: 1, type: "dashed" },
+        show: false,
       },
     },
     series: [],
@@ -913,6 +909,7 @@ function renderFundamentalsChart(model) {
     splitLine: { show: false },
     minorTick: { show: true, splitNumber: 4 },
     minorSplitLine: { show: true, lineStyle: { color: "rgba(192,92,255,0.10)", width: 0.6 } },
+    axisPointer: { show: false },
   }];
   const definitions = [
     ["Revenue/share", "revenuePerShare", COLORS.cyan],
