@@ -651,6 +651,13 @@ function commonChartOption(model, yName) {
       axisTick: { lineStyle: { color: "#687277" } },
       axisLabel: { color: "#8f9a9e", fontSize: 10, hideOverlap: true, formatter: { year: "{yyyy}", month: "{MMM}" } },
       splitLine: { show: false },
+      axisPointer: {
+        show: true,
+        type: "line",
+        snap: true,
+        triggerTooltip: true,
+        lineStyle: { color: "#aeb8bb", width: 1, type: "dashed" },
+      },
     },
     yAxis: {
       type: "value",
@@ -663,6 +670,13 @@ function commonChartOption(model, yName) {
       splitLine: { lineStyle: { color: COLORS.grid } },
       minorTick: { show: true, splitNumber: 4 },
       minorSplitLine: { show: true, lineStyle: { color: "rgba(122,122,122,0.08)", width: 0.6 } },
+      axisPointer: {
+        show: true,
+        type: "line",
+        snap: true,
+        triggerTooltip: true,
+        lineStyle: { color: "#aeb8bb", width: 1, type: "dashed" },
+      },
     },
     series: [],
   };
