@@ -642,6 +642,19 @@ function formatHoverTooltip(params, model, priceChart) {
   return `${date}<br/>${priceChart ? "Price" : "Value"}: ${valueText}`;
 }
 
+function endLabelAtLineRight(offsetX = 8) {
+  return (params) => {
+    const lineRect = params.rect || params.labelRect;
+    const labelRect = params.labelRect || { y: lineRect.y, height: 0 };
+    return {
+      x: lineRect.x + lineRect.width + offsetX,
+      y: labelRect.y + labelRect.height / 2,
+      align: "left",
+      verticalAlign: "middle",
+    };
+  };
+}
+
 function commonChartOption(model, yName) {
   const lastDate = model.prices.at(-1).date;
   const priceChart = yName.startsWith("Price");
@@ -800,9 +813,8 @@ function renderFcfChart(model) {
         formatter: `${name} ${formatPercent(scenario.totalReturn, 1, true)}`,
         color: grays[name],
         fontSize: 10,
-        distance: 28,
       },
-      labelLayout: { moveOverlap: "shiftY" },
+      labelLayout: endLabelAtLineRight(58),
       z: 2,
     });
   }
@@ -959,36 +971,40 @@ function renderFundamentalsChart(model) {
     ["GAAP EPS/share", "eps", COLORS.yellow],
     ["Shares", "shares", "#657075"],
   ];
-  option.series = definitions.map(([name, field, color]) => ({
-    name, type: "line", data: normalizedSeries(model.fundamentals, field),
-    showSymbol: true, symbolSize: 5, smooth: 0.24,
-    lineStyle: { color, width: 1.5 }, itemStyle: { color },
-    endLabel: {
-      show: true,
-      formatter: (params) => `${name} ${formatNumber(tooltipNumericValue(params), 0)}${name === "Shares" ? " ↓ better" : ""}`,
-      color,
-      fontSize: 10,
-      distance: 8,
-      align: "left",
-      offset: [0, 0],
-      backgroundColor: "rgba(5,8,9,0.86)",
-      padding: [2, 4],
-    },
-    labelLayout: { moveOverlap: "shiftY" },
-  }));
+  option.series = definitions.map(([name, field, color]) => {
+    const data = normalizedSeries(model.fundamentals, field);
+    const latestValue = data.at(-1)?.[1];
+    return {
+      name, type: "line", data,
+      showSymbol: true, symbolSize: 5, smooth: 0.24,
+      lineStyle: { color, width: 1.5 }, itemStyle: { color },
+      endLabel: {
+        show: true,
+        formatter: `${name} ${formatNumber(latestValue, 0)}`,
+        color,
+        fontSize: 10,
+        distance: 8,
+        align: "left",
+        backgroundColor: "rgba(5,8,9,0.86)",
+        padding: [2, 4],
+      },
+      labelLayout: { moveOverlap: "shiftY" },
+    };
+  });
+  const roicData = model.fundamentals.filter((row) => finite(row.roic)).map((row) => [row.date, row.roic * 100]);
+  const latestRoic = roicData.at(-1)?.[1];
   option.series.push({
     name: "ROIC", type: "line", yAxisIndex: 1,
-    data: model.fundamentals.filter((row) => finite(row.roic)).map((row) => [row.date, row.roic * 100]),
+    data: roicData,
     showSymbol: true, symbolSize: 5, smooth: 0.24,
     lineStyle: { color: COLORS.purple, width: 1.5 }, itemStyle: { color: COLORS.purple },
     endLabel: {
       show: true,
-      formatter: (params) => `ROIC ${formatNumber(tooltipNumericValue(params), 1)}%`,
+      formatter: `ROIC ${formatNumber(latestRoic, 1)}%`,
       color: COLORS.purple,
       fontSize: 10,
       distance: 8,
       align: "left",
-      offset: [0, 0],
       backgroundColor: "rgba(5,8,9,0.86)",
       padding: [2, 4],
     },
