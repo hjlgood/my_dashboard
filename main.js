@@ -617,8 +617,34 @@ function solveIrr(currentPrice, fcfPerShare, firstGrowth, secondGrowth, terminal
   return (low + high) / 2;
 }
 
+function tooltipNumericValue(item) {
+  const value = item?.value;
+  return rawNumber(Array.isArray(value) ? value.at(-1) : value);
+}
+
+function tooltipDateLabel(item) {
+  const rawValue = item?.axisValue ?? (Array.isArray(item?.value) ? item.value[0] : null);
+  if (rawValue == null || rawValue === "") return "N/A";
+  const date = new Date(rawValue);
+  return Number.isNaN(date.getTime()) ? String(rawValue ?? "N/A") : date.toISOString().slice(0, 10);
+}
+
+function formatHoverTooltip(params, model, priceChart) {
+  const entries = Array.isArray(params) ? params : [params];
+  const actual = entries.find((item) => item?.seriesName === "Actual price");
+  const datum = actual || entries.find((item) => finite(tooltipNumericValue(item)));
+  const date = tooltipDateLabel(datum || entries[0]);
+  if (!datum) return date;
+  const value = tooltipNumericValue(datum);
+  const valueText = priceChart
+    ? formatMoney(value, model.currency, 2)
+    : formatNumber(value, 1);
+  return `${date}<br/>${priceChart ? "Price" : "Value"}: ${valueText}`;
+}
+
 function commonChartOption(model, yName) {
   const lastDate = model.prices.at(-1).date;
+  const priceChart = yName.startsWith("Price");
   return {
     animation: false,
     backgroundColor: "transparent",
@@ -642,7 +668,7 @@ function commonChartOption(model, yName) {
       backgroundColor: "rgba(3,6,7,0.96)",
       borderColor: "#4a5559",
       textStyle: { color: "#e7edef", fontSize: 11 },
-      valueFormatter: (value) => finite(rawNumber(value)) ? formatMoney(rawNumber(value), model.currency, 2) : "N/A",
+      formatter: (params) => formatHoverTooltip(params, model, priceChart),
     },
     xAxis: {
       type: "time",
@@ -722,6 +748,7 @@ function valuationAreaSeries(name, lower, upper, color) {
 
 function renderFcfChart(model) {
   const option = commonChartOption(model, `Price (${model.currency})`);
+  option.legend.show = false;
   const currentDate = model.prices.at(-1).date;
   const futureDate = addYears(currentDate, 1);
   const anchors = model.fundamentals.filter((row) => finite(row.adjustedFcfPerShare));
@@ -845,6 +872,7 @@ function calculateValuationBand(model, field, analystDriver) {
 function renderMultipleChart(model, elementId, captionId, field, name, analystDriver, analystLabel) {
   const calculation = calculateValuationBand(model, field, analystDriver);
   const option = commonChartOption(model, `Price (${model.currency})`);
+  option.legend.show = false;
   if (calculation.levels.length === 5) {
     for (let index = 0; index < 4; index += 1) {
       option.series.push(valuationAreaSeries(`${name} area`, calculation.paths[index], calculation.paths[index + 1], BAND_COLORS[index + 1]));
@@ -899,8 +927,8 @@ function normalizedSeries(rows, field) {
 
 function renderFundamentalsChart(model) {
   const option = commonChartOption(model, "Indexed level");
+  option.legend.show = false;
   option.grid.right = 68;
-  option.tooltip.valueFormatter = (value) => finite(rawNumber(value)) ? rawNumber(value).toFixed(1) : "N/A";
   option.yAxis = [option.yAxis, {
     type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 10,
     nameTextStyle: { color: COLORS.purple, fontSize: 10 },
@@ -915,18 +943,42 @@ function renderFundamentalsChart(model) {
     ["Revenue/share", "revenuePerShare", COLORS.cyan],
     ["FCF-SBC/share", "adjustedFcfPerShare", COLORS.green],
     ["GAAP EPS/share", "eps", COLORS.yellow],
-    ["Shares", "shares", "#ff9f1c"],
+    ["Shares", "shares", "#657075"],
   ];
   option.series = definitions.map(([name, field, color]) => ({
     name, type: "line", data: normalizedSeries(model.fundamentals, field),
     showSymbol: true, symbolSize: 5, smooth: 0.24,
     lineStyle: { color, width: 1.5 }, itemStyle: { color },
+    endLabel: {
+      show: true,
+      formatter: (params) => `${name} ${formatNumber(tooltipNumericValue(params), 1)}${name === "Shares" ? " ↓ better" : ""}`,
+      color,
+      fontSize: 10,
+      distance: 0,
+      align: "right",
+      offset: [-6, 0],
+      backgroundColor: "rgba(5,8,9,0.86)",
+      padding: [2, 4],
+    },
+    labelLayout: { moveOverlap: "shiftY" },
   }));
   option.series.push({
     name: "ROIC", type: "line", yAxisIndex: 1,
     data: model.fundamentals.filter((row) => finite(row.roic)).map((row) => [row.date, row.roic * 100]),
     showSymbol: true, symbolSize: 5, smooth: 0.24,
     lineStyle: { color: COLORS.purple, width: 1.5 }, itemStyle: { color: COLORS.purple },
+    endLabel: {
+      show: true,
+      formatter: (params) => `ROIC ${formatNumber(tooltipNumericValue(params), 1)}%`,
+      color: COLORS.purple,
+      fontSize: 10,
+      distance: 0,
+      align: "right",
+      offset: [-6, 0],
+      backgroundColor: "rgba(5,8,9,0.86)",
+      padding: [2, 4],
+    },
+    labelLayout: { moveOverlap: "shiftY" },
   });
   setChart("fundamentals-chart", option);
   setCaption("fundamentals-caption", [
