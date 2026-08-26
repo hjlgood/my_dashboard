@@ -13,14 +13,18 @@
   --panel-soft: #0c1215;
   --border: #30383c;
   --border-soft: #1c262a;
-  --cyan: #24d8ef;
-  --cyan-strong: #00e5e5;
+  --ui-accent: #8fb4bf;
+  --ui-accent-hover: #b6cbd1;
   --muted: #9ca9ad;
   --muted-2: #707d81;
-  --yellow: #ffd43b;
   --green: #35d04f;
   --red: #ff4d36;
   --purple: #c05cff;
+  --data-blue: #4d9fff;
+  --card-radius: 10px;
+  --card-border: rgba(73, 88, 94, 0.8);
+  --card-background: rgba(8, 13, 15, 0.94);
+  --card-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
 }
 
 html {
@@ -60,7 +64,7 @@ button {
 .eyebrow,
 .chart-kicker {
   margin: 0;
-  color: var(--cyan);
+  color: var(--ui-accent);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.15em;
@@ -87,17 +91,17 @@ button {
   top: 10px;
   z-index: 20;
   margin-bottom: 16px;
-  border: 1px solid rgba(73, 88, 94, 0.8);
-  border-radius: 10px;
-  background: rgba(8, 13, 15, 0.94);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background: var(--card-background);
+  box-shadow: var(--card-shadow);
   padding: 12px 14px 9px;
   backdrop-filter: blur(12px);
 }
 
 .query-form {
   display: grid;
-  grid-template-columns: minmax(110px, 0.42fr) minmax(280px, 1.58fr) auto;
+  grid-template-columns: minmax(140px, 1fr) auto;
   align-items: end;
   gap: 10px;
 }
@@ -134,8 +138,8 @@ button {
 }
 
 .field input:focus {
-  border-color: var(--cyan);
-  box-shadow: 0 0 0 2px rgba(36, 216, 239, 0.14);
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 2px rgba(143, 180, 191, 0.14);
 }
 
 #analyze-button {
@@ -146,7 +150,7 @@ button {
   justify-content: center;
   gap: 8px;
   border-radius: 6px;
-  background: var(--cyan);
+  background: var(--ui-accent);
   color: #001014;
   cursor: pointer;
   font-size: 0.82rem;
@@ -157,13 +161,62 @@ button {
 }
 
 #analyze-button:hover:not(:disabled) {
-  background: #63e9f7;
+  background: var(--ui-accent-hover);
   transform: translateY(-1px);
 }
 
 #analyze-button:disabled {
   cursor: wait;
   opacity: 0.62;
+}
+
+.worker-settings {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.worker-settings summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 1px 0;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  list-style: none;
+  user-select: none;
+}
+
+.worker-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.worker-settings summary::before {
+  content: "+";
+  width: 1em;
+  color: var(--ui-accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.worker-settings[open] summary::before {
+  content: "−";
+}
+
+.worker-settings summary > :first-child {
+  margin-right: auto;
+}
+
+.settings-summary-detail {
+  color: var(--muted-2);
+  font-weight: 500;
+}
+
+.worker-settings .worker-field {
+  margin-top: 9px;
+  padding: 0 0 3px 17px;
 }
 
 .button-spinner {
@@ -204,8 +257,8 @@ button {
 }
 
 .status-dot.loading {
-  background: var(--yellow);
-  box-shadow: 0 0 10px rgba(255, 212, 59, 0.75);
+  background: var(--ui-accent);
+  box-shadow: 0 0 10px rgba(143, 180, 191, 0.58);
 }
 
 .status-dot.success {
@@ -239,8 +292,11 @@ button {
 .chart-card,
 .metrics-board,
 .diagnostics {
-  border: 1px solid var(--border);
-  background: rgba(5, 8, 9, 0.94);
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background: var(--card-background);
+  box-shadow: var(--card-shadow);
 }
 
 .chart-card {
@@ -257,7 +313,7 @@ button {
 
 .card-heading h2 {
   margin: 3px 0 0;
-  color: var(--cyan);
+  color: var(--ui-accent);
   font-size: clamp(0.83rem, 2vw, 1rem);
   font-weight: 850;
   letter-spacing: 0.025em;
@@ -303,12 +359,13 @@ button {
 
 .caption-chip {
   border: 1px solid #313b3f;
+  border-radius: 5px;
   background: #070a0b;
   padding: 3px 6px;
 }
 
 .caption-chip strong {
-  color: var(--yellow);
+  color: #eef2f3;
   font-weight: 750;
 }
 
@@ -329,7 +386,7 @@ button {
 
 .metric-section h2 {
   margin: 0 0 13px;
-  color: var(--cyan);
+  color: var(--ui-accent);
   font-size: 0.76rem;
   font-weight: 850;
   letter-spacing: 0.055em;
@@ -357,8 +414,7 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.metric-list dd.cyan { color: var(--cyan); }
-.metric-list dd.yellow { color: var(--yellow); }
+.metric-list dd.data-blue { color: var(--data-blue); }
 .metric-list dd.green { color: var(--green); }
 .metric-list dd.red { color: var(--red); }
 
@@ -409,11 +465,6 @@ button {
     grid-template-columns: 1fr 1fr;
   }
 
-  .worker-field {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
   #analyze-button {
     grid-column: 2;
     grid-row: 1;
@@ -453,10 +504,17 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .worker-field,
   #analyze-button {
     grid-column: 1;
     grid-row: auto;
+  }
+
+  .worker-settings {
+    grid-column: 1;
+  }
+
+  .settings-summary-detail {
+    display: none;
   }
 
   .chart-card {

@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260826-3">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script src="main.js?v=20260826-3" defer></script>
+  <script src="main.js?v=20260827-1" defer></script>
 </head>
 <body>
   <div class="page-shell">
@@ -16,7 +16,7 @@
       <p class="eyebrow">BROWSER-NATIVE VALUE DASHBOARD</p>
       <h1 id="company-title">Stock Value Dashboard</h1>
       <p id="market-summary" class="market-summary">
-        Ticker와 Cloudflare Worker 주소를 입력해 분석을 시작하세요.
+        Ticker를 입력해 분석을 시작하세요.
       </p>
     </header>
 
@@ -35,23 +35,28 @@
           >
         </label>
 
-        <label class="field worker-field" for="worker-url-input">
-          <span>Cloudflare Worker URL</span>
-          <input
-            id="worker-url-input"
-            name="workerUrl"
-            type="url"
-            placeholder="https://my-worker.example.workers.dev"
-            autocomplete="url"
-            spellcheck="false"
-            required
-          >
-        </label>
-
         <button id="analyze-button" type="submit">
           <span class="button-label">Analyze</span>
           <span class="button-spinner" aria-hidden="true"></span>
         </button>
+
+        <details id="worker-settings" class="worker-settings">
+          <summary>
+            <span>Advanced data source</span>
+            <span class="settings-summary-detail">Cloudflare Worker</span>
+          </summary>
+          <label class="field worker-field" for="worker-url-input">
+            <span>Cloudflare Worker URL</span>
+            <input
+              id="worker-url-input"
+              name="workerUrl"
+              type="url"
+              placeholder="https://my-worker.example.workers.dev"
+              autocomplete="url"
+              spellcheck="false"
+            >
+          </label>
+        </details>
       </form>
 
       <div class="status-row" role="status" aria-live="polite">

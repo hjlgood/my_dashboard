@@ -17,7 +17,8 @@ const COLORS = Object.freeze({
   text: "#dce4e6",
   muted: "#849196",
   grid: "rgba(122,122,122,0.18)",
-  cyan: "#00e5e5",
+  price: "#00e5e5",
+  revenue: "#4d9fff",
   yellow: "#ffd43b",
   red: "#ff4d36",
   orange: "#ff9f1c",
@@ -37,6 +38,7 @@ const dom = {
   form: document.querySelector("#stock-form"),
   ticker: document.querySelector("#ticker-input"),
   workerUrl: document.querySelector("#worker-url-input"),
+  workerSettings: document.querySelector("#worker-settings"),
   button: document.querySelector("#analyze-button"),
   statusDot: document.querySelector("#status-dot"),
   statusText: document.querySelector("#status-text"),
@@ -705,12 +707,12 @@ function commonChartOption(model, yName) {
       name: yName,
       nameTextStyle: { color: "#919da1", fontSize: 10, padding: [0, 0, 0, 4] },
       scale: true,
-      splitNumber: 16,
+      splitNumber: 6,
       axisLine: { show: true, lineStyle: { color: "#687277" } },
       axisLabel: { color: "#8f9a9e", fontSize: 9, hideOverlap: true },
       splitLine: { lineStyle: { color: COLORS.grid } },
-      minorTick: { show: true, splitNumber: 4 },
-      minorSplitLine: { show: true, lineStyle: { color: "rgba(122,122,122,0.08)", width: 0.6 } },
+      minorTick: { show: false },
+      minorSplitLine: { show: false },
       axisPointer: {
         show: false,
       },
@@ -725,8 +727,8 @@ function actualPriceSeries(model) {
     type: "line",
     data: model.prices.map((row) => [row.date, row.value]),
     showSymbol: false,
-    lineStyle: { color: COLORS.cyan, width: 1.5 },
-    itemStyle: { color: COLORS.cyan },
+    lineStyle: { color: COLORS.price, width: 1.7 },
+    itemStyle: { color: COLORS.price },
     z: 10,
   };
 }
@@ -948,7 +950,7 @@ function renderFundamentalsChart(model) {
   const option = commonChartOption(model, "Indexed level");
   option.legend.show = false;
   option.grid.right = 68;
-  option.yAxis.splitNumber = 6;
+  option.yAxis.splitNumber = 4;
   option.yAxis.axisLabel = {
     ...option.yAxis.axisLabel,
     formatter: (value) => Math.round(value),
@@ -956,7 +958,7 @@ function renderFundamentalsChart(model) {
   option.yAxis.minorTick = { show: false };
   option.yAxis.minorSplitLine = { show: false };
   option.yAxis = [option.yAxis, {
-    type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 4,
+    type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 3,
     nameTextStyle: { color: COLORS.purple, fontSize: 10 },
     axisLine: { show: true, lineStyle: { color: COLORS.purple } },
     axisLabel: { color: COLORS.purple, formatter: (value) => `${Math.round(value)}%`, fontSize: 9, hideOverlap: true },
@@ -966,7 +968,7 @@ function renderFundamentalsChart(model) {
     axisPointer: { show: false },
   }];
   const definitions = [
-    ["Revenue/share", "revenuePerShare", COLORS.cyan],
+    ["Revenue/share", "revenuePerShare", COLORS.revenue],
     ["FCF-SBC/share", "adjustedFcfPerShare", COLORS.green],
     ["GAAP EPS/share", "eps", COLORS.yellow],
     ["Shares", "shares", "#657075"],
@@ -1049,8 +1051,8 @@ function renderMetrics(model) {
     ["Quick ratio", formatMultiple(model.metrics.quickRatio, 2)],
   ]);
   setMetrics("reverse-metrics", [
-    ["Implied 10Y FCF-SBC growth", formatPercent(model.reverseImpliedGrowth), "cyan"],
-    ["Base implied IRR", formatPercent(model.baseImpliedIrr), "yellow"],
+    ["Implied 10Y FCF-SBC growth", formatPercent(model.reverseImpliedGrowth), "data-blue"],
+    ["Base implied IRR", formatPercent(model.baseImpliedIrr)],
     ["Base 10Y FCF-SBC CAGR", formatPercent(model.baseTenYearCagr)],
     ["Base minus implied", finite(model.baseTenYearCagr) && finite(model.reverseImpliedGrowth) ? `${formatPercent(model.baseTenYearCagr - model.reverseImpliedGrowth, 1, true)}p` : "N/A", "green"],
     ["Year-10 P/(FCF-SBC)", formatMultiple(model.exitMultiples.Base)],
@@ -1239,6 +1241,7 @@ async function analyze(event) {
     const model = buildDashboardModel(payload, ticker);
     const elapsed = performance.now() - started;
     renderDashboard(model, payload, response.status, Math.round(elapsed));
+    dom.workerSettings.open = false;
     const failed = Object.entries(payload.data).filter(([, item]) => !item.ok).map(([name, item]) =>
       `${name}${item.status ? ` HTTP ${item.status}` : ""}`
     );
@@ -1271,6 +1274,7 @@ function initializeInputs() {
     ? "http://127.0.0.1:8787"
     : "";
   dom.workerUrl.value = queryWorker || storedWorker || localDefault;
+  if (!dom.workerUrl.value) dom.workerSettings.open = true;
 }
 
 let resizeFrame = null;
