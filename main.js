@@ -795,7 +795,14 @@ function renderFcfChart(model) {
       symbolSize: 5,
       lineStyle: { color: grays[name], width: 1, opacity: 0.78 },
       itemStyle: { color: grays[name] },
-      endLabel: { show: true, formatter: `${name} ${formatPercent(scenario.totalReturn, 1, true)}`, color: grays[name], fontSize: 10 },
+      endLabel: {
+        show: true,
+        formatter: `${name} ${formatPercent(scenario.totalReturn, 1, true)}`,
+        color: grays[name],
+        fontSize: 10,
+        distance: 28,
+      },
+      labelLayout: { moveOverlap: "shiftY" },
       z: 2,
     });
   }
@@ -929,14 +936,21 @@ function renderFundamentalsChart(model) {
   const option = commonChartOption(model, "Indexed level");
   option.legend.show = false;
   option.grid.right = 68;
+  option.yAxis.splitNumber = 6;
+  option.yAxis.axisLabel = {
+    ...option.yAxis.axisLabel,
+    formatter: (value) => Math.round(value),
+  };
+  option.yAxis.minorTick = { show: false };
+  option.yAxis.minorSplitLine = { show: false };
   option.yAxis = [option.yAxis, {
-    type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 10,
+    type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 4,
     nameTextStyle: { color: COLORS.purple, fontSize: 10 },
     axisLine: { show: true, lineStyle: { color: COLORS.purple } },
-    axisLabel: { color: COLORS.purple, formatter: "{value}%", fontSize: 9, hideOverlap: true },
+    axisLabel: { color: COLORS.purple, formatter: (value) => `${Math.round(value)}%`, fontSize: 9, hideOverlap: true },
     splitLine: { show: false },
-    minorTick: { show: true, splitNumber: 4 },
-    minorSplitLine: { show: true, lineStyle: { color: "rgba(192,92,255,0.10)", width: 0.6 } },
+    minorTick: { show: false },
+    minorSplitLine: { show: false },
     axisPointer: { show: false },
   }];
   const definitions = [
@@ -951,12 +965,12 @@ function renderFundamentalsChart(model) {
     lineStyle: { color, width: 1.5 }, itemStyle: { color },
     endLabel: {
       show: true,
-      formatter: (params) => `${name} ${formatNumber(tooltipNumericValue(params), 1)}${name === "Shares" ? " ↓ better" : ""}`,
+      formatter: (params) => `${name} ${formatNumber(tooltipNumericValue(params), 0)}${name === "Shares" ? " ↓ better" : ""}`,
       color,
       fontSize: 10,
-      distance: 0,
-      align: "right",
-      offset: [-6, 0],
+      distance: 8,
+      align: "left",
+      offset: [0, 0],
       backgroundColor: "rgba(5,8,9,0.86)",
       padding: [2, 4],
     },
@@ -972,9 +986,9 @@ function renderFundamentalsChart(model) {
       formatter: (params) => `ROIC ${formatNumber(tooltipNumericValue(params), 1)}%`,
       color: COLORS.purple,
       fontSize: 10,
-      distance: 0,
-      align: "right",
-      offset: [-6, 0],
+      distance: 8,
+      align: "left",
+      offset: [0, 0],
       backgroundColor: "rgba(5,8,9,0.86)",
       padding: [2, 4],
     },
