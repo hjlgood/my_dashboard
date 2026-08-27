@@ -18,21 +18,28 @@ const COLORS = Object.freeze({
   muted: "#849196",
   grid: "rgba(122,122,122,0.18)",
   price: "#00e5e5",
-  revenue: "#4d9fff",
-  yellow: "#ffd43b",
-  red: "#ff4d36",
-  orange: "#ff9f1c",
-  lime: "#7fd84f",
-  green: "#35d04f",
-  purple: "#c05cff",
+  revenue: "#6f9fd8",
+  fcf: "#78b69f",
+  eps: "#c7ae78",
+  shares: "#778387",
+  roic: "#aa9abb",
 });
 
-const YIELD_COLORS = [COLORS.red, COLORS.orange, COLORS.yellow, COLORS.lime, COLORS.green];
-const BAND_COLORS = [COLORS.green, COLORS.lime, COLORS.yellow, COLORS.orange, COLORS.red];
+const YIELD_COLORS = ["#68757a", "#7c898e", "#b5c0c4", "#7c898e", "#68757a"];
+const BAND_COLORS = ["#68757a", "#7c898e", "#b5c0c4", "#7c898e", "#68757a"];
 const BAND_SMOOTH = 0.80;
+const NUMERIC_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const CHART_GRID = Object.freeze({ left: 64, right: 68, top: 44, bottom: 53 });
+const RETURN_RAIL = Object.freeze({ low: -0.50, high: 0.50 });
+const ENDPOINT_IMPACTS = Object.freeze({
+  chart: "Price history and charts 1–3",
+  fundamentals: "Chart 4 and historical drivers",
+  quote: "Masthead, current price and metrics",
+  analysis: "Valuation rail, bands and scenarios",
+});
 const HORIZONTAL_CROSSHAIR_ID = "manual-horizontal-crosshair";
 const chartInstances = new Map();
+const chartPointerStates = new Map();
 
 const dom = {
   form: document.querySelector("#stock-form"),
@@ -47,6 +54,7 @@ const dom = {
   marketSummary: document.querySelector("#market-summary"),
   dashboard: document.querySelector("#dashboard"),
   diagnostic: document.querySelector("#diagnostic-output"),
+  coordinateTooltip: document.querySelector("#coordinate-tooltip"),
 };
 
 function finite(value) {
@@ -631,15 +639,28 @@ function tooltipDateLabel(item) {
   return Number.isNaN(date.getTime()) ? String(rawValue ?? "N/A") : date.toISOString().slice(0, 10);
 }
 
-function formatHoverTooltip(params, model, priceChart) {
+function formatAxisDate(value) {
+  const numeric = rawNumber(value);
+  const date = finite(numeric) ? new Date(numeric) : new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value ?? "N/A") : date.toISOString().slice(0, 10);
+}
+
+function formatAxisPrice(value, model) {
+  return formatMoney(rawNumber(value), model.currency, 2);
+}
+
+function formatHoverTooltip(params, model, priceChart, chartId, coordinateTooltip) {
   const entries = Array.isArray(params) ? params : [params];
   const actual = entries.find((item) => item?.seriesName === "Actual price");
   const datum = actual || entries.find((item) => finite(tooltipNumericValue(item)));
-  const date = tooltipDateLabel(datum || entries[0]);
-  if (!datum) return date;
-  const value = tooltipNumericValue(datum);
+  const pointer = coordinateTooltip ? chartPointerStates.get(chartId) : null;
+  const date = finite(pointer?.xValue)
+    ? formatAxisDate(pointer.xValue)
+    : tooltipDateLabel(datum || entries[0]);
+  const value = finite(pointer?.yValue) ? pointer.yValue : tooltipNumericValue(datum);
+  if (!datum && !finite(value)) return date;
   const valueText = priceChart
-    ? formatMoney(value, model.currency, 2)
+    ? formatAxisPrice(value, model)
     : formatNumber(value, 1);
   return `${date}<br/>${priceChart ? "Price" : "Value"}: ${valueText}`;
 }
@@ -657,17 +678,18 @@ function endLabelAtLineRight(offsetX = 8) {
   };
 }
 
-function commonChartOption(model, yName) {
+function commonChartOption(model, yName, chartId = null, coordinateTooltip = false) {
   const lastDate = model.prices.at(-1).date;
   const priceChart = yName.startsWith("Price");
   return {
     animation: false,
     backgroundColor: "transparent",
-    textStyle: { color: COLORS.text, fontFamily: "Inter, Noto Sans KR, sans-serif" },
+    textStyle: { color: COLORS.text, fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" },
     grid: { ...CHART_GRID, containLabel: false },
     legend: { top: 3, left: 4, textStyle: { color: "#aeb8bb", fontSize: 10 }, itemWidth: 16, itemHeight: 7 },
     tooltip: {
       trigger: "axis",
+      showContent: !coordinateTooltip,
       axisPointer: {
         type: "cross",
         snap: true,
@@ -678,12 +700,13 @@ function commonChartOption(model, yName) {
           backgroundColor: "#263238",
           color: "#e7edef",
           fontSize: 10,
+          fontFamily: NUMERIC_FONT,
         },
       },
       backgroundColor: "rgba(3,6,7,0.96)",
       borderColor: "#4a5559",
       textStyle: { color: "#e7edef", fontSize: 11 },
-      formatter: (params) => formatHoverTooltip(params, model, priceChart),
+      formatter: (params) => formatHoverTooltip(params, model, priceChart, chartId, coordinateTooltip),
     },
     xAxis: {
       type: "time",
@@ -692,13 +715,23 @@ function commonChartOption(model, yName) {
       boundaryGap: false,
       axisLine: { lineStyle: { color: "#687277" } },
       axisTick: { lineStyle: { color: "#687277" } },
-      axisLabel: { color: "#8f9a9e", fontSize: 10, hideOverlap: true, formatter: { year: "{yyyy}", month: "{MMM}" } },
+      axisLabel: { color: "#8f9a9e", fontSize: 10, fontFamily: NUMERIC_FONT, hideOverlap: true, formatter: { year: "{yyyy}", month: "{MMM}" } },
       splitLine: { show: false },
       axisPointer: {
         show: true,
         type: "line",
-        snap: true,
+        snap: coordinateTooltip ? false : true,
         triggerTooltip: true,
+        ...(coordinateTooltip ? {
+          label: {
+            show: true,
+            formatter: (params) => formatAxisDate(params.value),
+            backgroundColor: "#263238",
+            color: "#e7edef",
+            fontSize: 10,
+            fontFamily: NUMERIC_FONT,
+          },
+        } : {}),
         lineStyle: { color: "#aeb8bb", width: 1, type: "dashed" },
       },
     },
@@ -709,11 +742,31 @@ function commonChartOption(model, yName) {
       scale: true,
       splitNumber: 6,
       axisLine: { show: true, lineStyle: { color: "#687277" } },
-      axisLabel: { color: "#8f9a9e", fontSize: 9, hideOverlap: true },
+      axisLabel: {
+        color: "#8f9a9e",
+        fontSize: 9,
+        fontFamily: NUMERIC_FONT,
+        hideOverlap: true,
+        ...(priceChart ? { formatter: (value) => formatAxisPrice(value, model) } : {}),
+      },
       splitLine: { lineStyle: { color: COLORS.grid } },
       minorTick: { show: false },
       minorSplitLine: { show: false },
-      axisPointer: {
+      axisPointer: coordinateTooltip ? {
+        show: true,
+        type: "line",
+        snap: false,
+        triggerTooltip: true,
+        label: {
+          show: true,
+          formatter: (params) => formatAxisPrice(params.value, model),
+          backgroundColor: "#263238",
+          color: "#e7edef",
+          fontSize: 10,
+          fontFamily: NUMERIC_FONT,
+        },
+        lineStyle: { color: "#aeb8bb", width: 1, type: "dashed" },
+      } : {
         show: false,
       },
     },
@@ -755,14 +808,110 @@ function valuationAreaSeries(name, lower, upper, color) {
       const p2 = api.coord([api.value(0), api.value(2)]);
       const p3 = api.coord([next[0], next[2]]);
       const p4 = api.coord([next[0], next[1]]);
-      return { type: "polygon", shape: { points: [p1, p2, p3, p4] }, style: { fill: rgba(color, 0.085), stroke: "none" } };
+      return { type: "polygon", shape: { points: [p1, p2, p3, p4] }, style: { fill: rgba(color, 0.05), stroke: "none" } };
     },
     z: 0,
   };
 }
 
+function setInsight(id, entries) {
+  const element = document.querySelector(`#${id}`);
+  if (!element) return;
+  const usable = Array.isArray(entries) ? entries.filter((entry) => Array.isArray(entry) && entry.length >= 2) : [];
+  element.innerHTML = usable.map(([label, value]) =>
+    `<span class="insight-token"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></span>`
+  ).join("");
+  element.hidden = !usable.length;
+}
+
+function markerPosition(value, low, high) {
+  if (!finite(value) || !finite(low) || !finite(high) || high <= low) return NaN;
+  return clamp((value - low) / (high - low) * 100, 6, 94);
+}
+
+function formatRailReturn(value) {
+  if (!finite(value)) return "N/A";
+  if (value < RETURN_RAIL.low) return `≤${formatPercent(RETURN_RAIL.low, 0)}`;
+  if (value > RETURN_RAIL.high) return `≥${formatPercent(RETURN_RAIL.high, 0, true)}`;
+  return formatPercent(value, 1, true);
+}
+
+function renderValuationRail(model, payload) {
+  const currentYield = safeDivide(model.adjustedFcf, model.marketCap);
+  const endpointEntries = Object.entries(payload.data || {});
+  const endpoints = endpointEntries.map(([, item]) => item);
+  const successfulEndpoints = endpoints.filter((item) => item?.ok).length;
+  const totalEndpoints = endpoints.length;
+
+  document.querySelector("#rail-context").textContent = model.ticker;
+  document.querySelector("#rail-current-price").textContent = formatMoney(model.currentPrice, model.currency);
+  document.querySelector("#rail-current-yield").textContent = formatPercent(currentYield);
+  document.querySelector("#rail-base-irr").textContent = formatPercent(model.baseImpliedIrr);
+  const healthElement = document.querySelector("#rail-data-health");
+  healthElement.textContent = totalEndpoints ? `${successfulEndpoints}/${totalEndpoints} endpoints` : "N/A";
+  healthElement.classList.toggle("rail-health-warning", totalEndpoints > 0 && successfulEndpoints < totalEndpoints);
+  const failedEndpoints = endpointEntries.filter(([, item]) => !item?.ok);
+  document.querySelector("#rail-health-summary").textContent = totalEndpoints === 0
+    ? "Endpoint status is unavailable."
+    : failedEndpoints.length
+      ? `${failedEndpoints.length} of ${totalEndpoints} endpoints failed. Affected views are listed below.`
+      : `All ${totalEndpoints} endpoints responded successfully.`;
+  document.querySelector("#rail-health-list").innerHTML = endpointEntries.map(([name, item]) => {
+    const status = item?.ok ? "OK" : item?.status ? `HTTP ${item.status}` : "Failed";
+    const statusClass = item?.ok ? "" : " class=\"endpoint-failed\"";
+    const impact = ENDPOINT_IMPACTS[name] || "Dependent dashboard data";
+    return `<li><span><span class="endpoint-name">${escapeHtml(name)}</span><small>Impact: ${escapeHtml(impact)}</small></span><strong${statusClass}>${escapeHtml(status)}</strong></li>`;
+  }).join("");
+
+  const markers = [
+    { id: "rail-current-marker", valueId: "rail-current-track-value", label: "Current", value: 0, targetPrice: model.currentPrice, current: true },
+    { id: "rail-bear-marker", valueId: "rail-bear-value", label: "Bear", value: model.scenarios.Bear?.totalReturn, targetPrice: model.scenarios.Bear?.targetPrice },
+    { id: "rail-base-marker", valueId: "rail-base-value", label: "Base", value: model.scenarios.Base?.totalReturn, targetPrice: model.scenarios.Base?.targetPrice },
+    { id: "rail-bull-marker", valueId: "rail-bull-value", label: "Bull", value: model.scenarios.Bull?.totalReturn, targetPrice: model.scenarios.Bull?.targetPrice },
+  ];
+  const usableValues = markers.map((marker) => marker.value).filter(finite);
+  const track = document.querySelector("#valuation-track");
+  if (usableValues.length < 2) {
+    track.classList.add("valuation-track-empty");
+    track.setAttribute("aria-label", "One-year valuation scenarios are unavailable.");
+    markers.forEach((marker) => { document.querySelector(`#${marker.id}`).hidden = true; });
+    return;
+  }
+
+  track.classList.remove("valuation-track-empty");
+  const positionedTargets = [];
+  for (const marker of markers) {
+    const markerElement = document.querySelector(`#${marker.id}`);
+    const valueElement = document.querySelector(`#${marker.valueId}`);
+    markerElement.hidden = !finite(marker.value);
+    valueElement.textContent = formatRailReturn(marker.value);
+    if (!finite(marker.value)) continue;
+    const position = markerPosition(marker.value, RETURN_RAIL.low, RETURN_RAIL.high);
+    markerElement.style.left = `${position}%`;
+    markerElement.classList.toggle("rail-marker-edge-left", position < 12);
+    markerElement.classList.toggle("rail-marker-edge-right", position > 88);
+    markerElement.title = `${marker.label}: ${formatMoney(marker.targetPrice, model.currency)} (${formatRailReturn(marker.value)})`;
+    if (!marker.current) positionedTargets.push({ markerElement, position });
+  }
+
+  positionedTargets.sort((left, right) => left.position - right.position);
+  let previousPosition = -Infinity;
+  let previousLane = 0;
+  for (const target of positionedTargets) {
+    const lane = target.position - previousPosition < 15 ? 1 - previousLane : 0;
+    target.markerElement.style.setProperty("--lane", lane);
+    previousPosition = target.position;
+    previousLane = lane;
+  }
+
+  const scenarioDescription = markers.filter((marker) => finite(marker.value))
+    .map((marker) => `${marker.label} ${formatRailReturn(marker.value)}`)
+    .join(", ");
+  track.setAttribute("aria-label", `One-year valuation rail using a fixed minus 50% to plus 50% return range: ${scenarioDescription}.`);
+}
+
 function renderFcfChart(model) {
-  const option = commonChartOption(model, `Price (${model.currency})`);
+  const option = commonChartOption(model, `Price (${model.currency})`, "fcf-chart", true);
   option.legend.show = false;
   const currentDate = model.prices.at(-1).date;
   const futureDate = addYears(currentDate, 1);
@@ -783,24 +932,42 @@ function renderFcfChart(model) {
     option.series.push(valuationAreaSeries(`${MODEL.yields[index] * 100}-${MODEL.yields[index + 1] * 100}% area`, paths[index + 1], paths[index], YIELD_COLORS[index + 1]));
   }
   option.series.push(actualPriceSeries(model));
-  paths.forEach((path, index) => option.series.push({
-    name: `${Math.round(MODEL.yields[index] * 100)}% yield`,
-    type: "line",
-    data: path,
-    showSymbol: false,
-    smooth: BAND_SMOOTH,
-    smoothMonotone: "x",
-    connectNulls: false,
-    lineStyle: { color: YIELD_COLORS[index], width: 1.05, type: "dashed" },
-    itemStyle: { color: YIELD_COLORS[index] },
-    endLabel: { show: true, formatter: `${Math.round(MODEL.yields[index] * 100)}%`, color: YIELD_COLORS[index], fontSize: 10 },
-    labelLayout: { moveOverlap: "shiftY" },
-    z: 4,
-  }));
-  const grays = { Bear: "#8f8f8f", Base: "#b5b5b5", Bull: "#d0d0d0" };
+  paths.forEach((path, index) => {
+    const isReference = index === 2;
+    option.series.push({
+      name: `${Math.round(MODEL.yields[index] * 100)}% yield`,
+      type: "line",
+      data: path,
+      showSymbol: false,
+      smooth: BAND_SMOOTH,
+      smoothMonotone: "x",
+      connectNulls: false,
+      lineStyle: {
+        color: YIELD_COLORS[index],
+        width: isReference ? 1.5 : 0.9,
+        type: isReference ? "solid" : "dashed",
+        opacity: isReference ? 0.95 : 0.62,
+      },
+      itemStyle: { color: YIELD_COLORS[index] },
+      endLabel: {
+        show: true,
+        formatter: `${Math.round(MODEL.yields[index] * 100)}%`,
+        color: YIELD_COLORS[index],
+        fontSize: 10,
+      },
+      labelLayout: { moveOverlap: "shiftY" },
+      z: isReference ? 5 : 4,
+    });
+  });
+  const scenarioStyles = {
+    Bear: { color: "#7d878b", type: "dotted", opacity: 0.64 },
+    Base: { color: "#c3cccf", type: "solid", opacity: 0.9 },
+    Bull: { color: "#949fa3", type: "dashed", opacity: 0.72 },
+  };
   for (const name of ["Bear", "Base", "Bull"]) {
     const scenario = model.scenarios[name];
     if (!finite(scenario.targetPrice)) continue;
+    const scenarioStyle = scenarioStyles[name];
     option.series.push({
       name: `${name} 1Y`,
       type: "line",
@@ -808,12 +975,12 @@ function renderFcfChart(model) {
       smooth: 0.32,
       showSymbol: true,
       symbolSize: 5,
-      lineStyle: { color: grays[name], width: 1, opacity: 0.78 },
-      itemStyle: { color: grays[name] },
+      lineStyle: { color: scenarioStyle.color, width: 1, type: scenarioStyle.type, opacity: scenarioStyle.opacity },
+      itemStyle: { color: scenarioStyle.color },
       endLabel: {
         show: true,
         formatter: `${name} ${formatPercent(scenario.totalReturn, 1, true)}`,
-        color: grays[name],
+        color: scenarioStyle.color,
         fontSize: 10,
       },
       labelLayout: endLabelAtLineRight(58),
@@ -826,10 +993,15 @@ function renderFcfChart(model) {
     data: [],
     markLine: { silent: true, symbol: "none", lineStyle: { color: "#ffffff", type: "dotted", opacity: 0.55 }, label: { show: false }, data: [{ xAxis: currentDate }] },
   });
-  setChart("fcf-chart", option);
+  setChart("fcf-chart", option, { model, priceChart: true, coordinateTooltip: true });
   const currentYield = safeDivide(model.adjustedFcf, model.marketCap);
+  const yieldDifference = finite(currentYield) ? (currentYield - 0.05) * 100 : NaN;
+  const baseReturn = model.scenarios.Base?.totalReturn;
+  setInsight("fcf-insight", [
+    ["vs 5% reference", finite(yieldDifference) ? `${yieldDifference >= 0 ? "+" : ""}${yieldDifference.toFixed(1)}pp` : "N/A"],
+    ["Base 1Y return", formatPercent(baseReturn, 1, true)],
+  ]);
   setCaption("fcf-caption", [
-    ["Current FCF-SBC yield", formatPercent(currentYield)],
     ["Current FCF-SBC/share", formatMoney(model.currentAdjustedFcfPerShare, model.currency)],
     ["Analyst +1Y Rev/share avg", `${formatMoney(model.analystRevenuePerShare, model.currency)} (${forwardChange(model.fundamentals.at(-1)?.revenuePerShare, model.analystRevenuePerShare)})`],
   ]);
@@ -892,26 +1064,39 @@ function calculateValuationBand(model, field, analystDriver) {
 
 function renderMultipleChart(model, elementId, captionId, field, name, analystDriver, analystLabel) {
   const calculation = calculateValuationBand(model, field, analystDriver);
-  const option = commonChartOption(model, `Price (${model.currency})`);
+  const option = commonChartOption(model, `Price (${model.currency})`, elementId, true);
   option.legend.show = false;
   if (calculation.levels.length === 5) {
     for (let index = 0; index < 4; index += 1) {
       option.series.push(valuationAreaSeries(`${name} area`, calculation.paths[index], calculation.paths[index + 1], BAND_COLORS[index + 1]));
     }
-    calculation.paths.forEach((path, index) => option.series.push({
-      name: `${name} q${[10, 25, 50, 75, 90][index]} · ${calculation.levels[index].toFixed(1)}x`,
-      type: "line",
-      data: path,
-      showSymbol: false,
-      smooth: BAND_SMOOTH,
-      smoothMonotone: "x",
-      connectNulls: false,
-      lineStyle: { color: BAND_COLORS[index], width: 1, type: "dashed" },
-      itemStyle: { color: BAND_COLORS[index] },
-      endLabel: { show: true, formatter: `${calculation.levels[index].toFixed(1)}x`, color: BAND_COLORS[index], fontSize: 10 },
-      labelLayout: { moveOverlap: "shiftY" },
-      z: 3,
-    }));
+    calculation.paths.forEach((path, index) => {
+      const isMedian = index === 2;
+      option.series.push({
+        name: `${name} q${[10, 25, 50, 75, 90][index]} · ${calculation.levels[index].toFixed(1)}x`,
+        type: "line",
+        data: path,
+        showSymbol: false,
+        smooth: BAND_SMOOTH,
+        smoothMonotone: "x",
+        connectNulls: false,
+        lineStyle: {
+          color: BAND_COLORS[index],
+          width: isMedian ? 1.4 : 0.9,
+          type: isMedian ? "solid" : "dashed",
+          opacity: isMedian ? 0.95 : 0.58,
+        },
+        itemStyle: { color: BAND_COLORS[index] },
+        endLabel: {
+          show: true,
+          formatter: `${calculation.levels[index].toFixed(1)}x`,
+          color: BAND_COLORS[index],
+          fontSize: 10,
+        },
+        labelLayout: { moveOverlap: "shiftY" },
+        z: isMedian ? 4 : 3,
+      });
+    });
   }
   option.series.push(actualPriceSeries(model));
   option.series.push({
@@ -921,11 +1106,28 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
   if (!calculation.levels.length) {
     option.graphic = [{ type: "text", left: "center", top: "middle", style: { text: `${name} bands: N/A\nFewer than 30 positive observations`, fill: "#aab4b7", font: "12px sans-serif", textAlign: "center", lineHeight: 20 } }];
   }
-  setChart(elementId, option);
+  setChart(elementId, option, { model, priceChart: true, coordinateTooltip: true });
   const currentMultiple = calculation.currentDriver > 0 ? model.currentPrice / calculation.currentDriver : NaN;
+  const historicalMedian = calculation.levels[2];
+  const insightId = `${elementId.replace("-chart", "")}-insight`;
+  if (finite(currentMultiple) && finite(historicalMedian) && historicalMedian > 0) {
+    const medianDifference = currentMultiple / historicalMedian - 1;
+    const driverChange = calculation.currentDriver > 0 && analystDriver > 0
+      ? analystDriver / calculation.currentDriver - 1
+      : NaN;
+    const driverName = field === "eps" ? "EPS/share" : "Revenue/share";
+    setInsight(insightId, [
+      [`Current ${name}`, formatMultiple(currentMultiple)],
+      ["vs historical median", formatPercent(medianDifference, 1, true)],
+      [`Forward ${driverName}`, formatPercent(driverChange, 1, true)],
+    ]);
+  } else {
+    setInsight(insightId, [
+      [`Historical ${name}`, "Unavailable"],
+      ["Band rule", "<30 positive observations"],
+    ]);
+  }
   const captionEntries = [
-    [`Current ${name}`, formatMultiple(currentMultiple)],
-    ["Historical median", formatMultiple(calculation.levels[2])],
     [analystLabel, `${formatMoney(analystDriver, model.currency)} (${forwardChange(calculation.currentDriver, analystDriver)})`],
   ];
   if (finite(calculation.multipleCap)) {
@@ -937,17 +1139,28 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
   setCaption(captionId, captionEntries);
 }
 
-function normalizedSeries(rows, field) {
+function findCommonBaselineDate(rows, fields) {
+  return rows.find((row) => row.date && fields.every((field) => finite(row[field]) && Math.abs(row[field]) > 1e-9))?.date || null;
+}
+
+function normalizedSeries(rows, field, baselineDate = null) {
   const clean = rows.filter((row) => finite(row[field]));
   if (!clean.length) return [];
-  const firstAbs = Math.abs(clean[0][field]);
-  const maxAbs = Math.max(...clean.map((row) => Math.abs(row[field])), 1);
-  const scale = firstAbs > 0 && maxAbs / firstAbs <= 5 ? firstAbs : maxAbs;
-  return clean.map((row) => [row.date, row[field] / scale * 100]);
+  const baselineIndex = baselineDate
+    ? clean.findIndex((row) => row.date === baselineDate && Math.abs(row[field]) > 1e-9)
+    : clean.findIndex((row) => Math.abs(row[field]) > 1e-9);
+  if (baselineIndex < 0) return [];
+  const baseline = clean[baselineIndex][field];
+  return clean.slice(baselineIndex).map((row) => {
+    const indexedValue = baseline > 0
+      ? row[field] / baseline * 100
+      : 100 + (row[field] - baseline) / Math.abs(baseline) * 100;
+    return [row.date, indexedValue];
+  });
 }
 
 function renderFundamentalsChart(model) {
-  const option = commonChartOption(model, "Indexed level");
+  const option = commonChartOption(model, "Indexed change", "fundamentals-chart");
   option.legend.show = false;
   option.grid.right = 68;
   option.yAxis.splitNumber = 4;
@@ -959,9 +1172,9 @@ function renderFundamentalsChart(model) {
   option.yAxis.minorSplitLine = { show: false };
   option.yAxis = [option.yAxis, {
     type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 3,
-    nameTextStyle: { color: COLORS.purple, fontSize: 10 },
-    axisLine: { show: true, lineStyle: { color: COLORS.purple } },
-    axisLabel: { color: COLORS.purple, formatter: (value) => `${Math.round(value)}%`, fontSize: 9, hideOverlap: true },
+    nameTextStyle: { color: COLORS.roic, fontSize: 10 },
+    axisLine: { show: true, lineStyle: { color: COLORS.roic } },
+    axisLabel: { color: COLORS.roic, formatter: (value) => `${Math.round(value)}%`, fontSize: 9, fontFamily: NUMERIC_FONT, hideOverlap: true },
     splitLine: { show: false },
     minorTick: { show: false },
     minorSplitLine: { show: false },
@@ -969,12 +1182,13 @@ function renderFundamentalsChart(model) {
   }];
   const definitions = [
     ["Revenue/share", "revenuePerShare", COLORS.revenue],
-    ["FCF-SBC/share", "adjustedFcfPerShare", COLORS.green],
-    ["GAAP EPS/share", "eps", COLORS.yellow],
-    ["Shares", "shares", "#657075"],
+    ["FCF-SBC/share", "adjustedFcfPerShare", COLORS.fcf],
+    ["GAAP EPS/share", "eps", COLORS.eps],
+    ["Shares", "shares", COLORS.shares],
   ];
+  const baselineDate = findCommonBaselineDate(model.fundamentals, definitions.map(([, field]) => field));
   option.series = definitions.map(([name, field, color]) => {
-    const data = normalizedSeries(model.fundamentals, field);
+    const data = normalizedSeries(model.fundamentals, field, baselineDate);
     const latestValue = data.at(-1)?.[1];
     return {
       name, type: "line", data,
@@ -993,17 +1207,19 @@ function renderFundamentalsChart(model) {
       labelLayout: { moveOverlap: "shiftY" },
     };
   });
-  const roicData = model.fundamentals.filter((row) => finite(row.roic)).map((row) => [row.date, row.roic * 100]);
+  const roicData = model.fundamentals
+    .filter((row) => (!baselineDate || row.date >= baselineDate) && finite(row.roic))
+    .map((row) => [row.date, row.roic * 100]);
   const latestRoic = roicData.at(-1)?.[1];
   option.series.push({
     name: "ROIC", type: "line", yAxisIndex: 1,
     data: roicData,
     showSymbol: true, symbolSize: 5, smooth: 0.24,
-    lineStyle: { color: COLORS.purple, width: 1.5 }, itemStyle: { color: COLORS.purple },
+    lineStyle: { color: COLORS.roic, width: 1.5 }, itemStyle: { color: COLORS.roic },
     endLabel: {
       show: true,
       formatter: `ROIC ${formatNumber(latestRoic, 1)}%`,
-      color: COLORS.purple,
+      color: COLORS.roic,
       fontSize: 10,
       distance: 8,
       align: "left",
@@ -1012,7 +1228,17 @@ function renderFundamentalsChart(model) {
     },
     labelLayout: { moveOverlap: "shiftY" },
   });
-  setChart("fundamentals-chart", option);
+  setChart("fundamentals-chart", option, { model, priceChart: false, coordinateTooltip: false });
+  const methodElement = document.querySelector("#fundamentals-method");
+  if (methodElement) {
+    methodElement.textContent = baselineDate
+      ? `Common baseline: ${baselineDate} = 100 · ROIC = right axis`
+      : "Each series = first non-zero period · ROIC = right axis";
+  }
+  setInsight("fundamentals-insight", [
+    ["Indexed baseline", baselineDate || "Per-series fallback"],
+    ["Latest ROIC", formatPercent(model.metrics.roic)],
+  ]);
   setCaption("fundamentals-caption", [
     ["Revenue/share CAGR", formatPercent(model.historicalCagrs.revenue)],
     ["FCF-SBC/share CAGR", formatPercent(model.historicalCagrs.adjustedFcf)],
@@ -1026,9 +1252,11 @@ function forwardChange(current, future) {
 }
 
 function setCaption(id, entries) {
-  document.querySelector(`#${id}`).innerHTML = entries.map(([label, value]) =>
-    `<span class="caption-chip">${escapeHtml(label)}: <strong>${escapeHtml(value)}</strong></span>`
-  ).join("");
+  document.querySelector(`#${id}`).innerHTML = entries.map(([label, value]) => {
+    const safeLabel = escapeHtml(label);
+    const safeValue = escapeHtml(value);
+    return `<span class="caption-metric" title="${safeLabel}: ${safeValue}"><span class="caption-label">${safeLabel}</span><strong>${safeValue}</strong></span>`;
+  }).join("");
 }
 
 function renderMetrics(model) {
@@ -1082,12 +1310,76 @@ function chartGridRect(chart) {
   };
 }
 
-function installHorizontalCrosshair(chart) {
+function updateChartPointerState(chart, chartId, x, y) {
+  if (!chartId || typeof chart.convertFromPixel !== "function") return;
+  const dataPoint = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
+  if (!Array.isArray(dataPoint)) return;
+  const previous = chartPointerStates.get(chartId) || {};
+  const next = { ...previous, pixelX: x, pixelY: y };
+  const xValue = rawNumber(dataPoint[0]);
+  const yValue = rawNumber(dataPoint[1]);
+  if (finite(xValue)) next.xValue = xValue;
+  if (finite(yValue)) next.yValue = yValue;
+  chartPointerStates.set(chartId, next);
+}
+
+function hideCoordinateTooltip() {
+  if (!dom.coordinateTooltip) return;
+  dom.coordinateTooltip.hidden = true;
+  dom.coordinateTooltip.setAttribute("aria-hidden", "true");
+  dom.coordinateTooltip.style.left = "-9999px";
+  dom.coordinateTooltip.style.top = "-9999px";
+}
+
+function showCoordinateTooltip(chart, chartId, x, y) {
+  const element = dom.coordinateTooltip;
+  const context = chart.__coordinateTooltipContext;
+  if (!element || !context?.coordinateTooltip || typeof chart.convertFromPixel !== "function") return;
+  const dataPoint = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [x, y]);
+  const xValue = rawNumber(dataPoint?.[0]);
+  const yValue = rawNumber(dataPoint?.[1]);
+  if (!finite(xValue) || !finite(yValue)) return;
+  chartPointerStates.set(chartId, { ...(chartPointerStates.get(chartId) || {}), pixelX: x, pixelY: y, xValue, yValue });
+
+  const valueText = context.priceChart
+    ? formatAxisPrice(yValue, context.model)
+    : formatNumber(yValue, 1);
+  element.innerHTML = `<span class="coordinate-tooltip-label">${escapeHtml(formatAxisDate(xValue))}</span><br>Price <strong>${escapeHtml(valueText)}</strong>`;
+  element.hidden = false;
+  element.setAttribute("aria-hidden", "false");
+
+  const rect = chart.getDom().getBoundingClientRect();
+  const offset = 14;
+  const viewportPadding = 8;
+  const requestedLeft = rect.left + x + offset;
+  const requestedTop = rect.top + y + offset;
+  const left = clamp(requestedLeft, viewportPadding, Math.max(viewportPadding, window.innerWidth - element.offsetWidth - viewportPadding));
+  const top = clamp(requestedTop, viewportPadding, Math.max(viewportPadding, window.innerHeight - element.offsetHeight - viewportPadding));
+  element.style.left = `${left}px`;
+  element.style.top = `${top}px`;
+}
+
+function installHorizontalCrosshair(chart, chartId = null) {
   if (typeof chart.getZr !== "function" || chart.__horizontalCrosshairInstalled) return;
   chart.__horizontalCrosshairInstalled = true;
   const zr = chart.getZr();
   let pendingY = NaN;
   let frameId = null;
+
+  if (chartId && typeof chart.on === "function") {
+    chart.on("updateAxisPointer", (event) => {
+      const axesInfo = Array.isArray(event?.axesInfo) ? event.axesInfo : [];
+      const xAxisInfo = axesInfo.find((info) => info.axisDim === "x" && info.axisIndex === 0);
+      const yAxisInfo = axesInfo.find((info) => info.axisDim === "y" && info.axisIndex === 0);
+      const previous = chartPointerStates.get(chartId) || {};
+      const next = { ...previous };
+      const xValue = xAxisInfo?.value == null ? NaN : rawNumber(xAxisInfo.value);
+      const yValue = yAxisInfo?.value == null ? NaN : rawNumber(yAxisInfo.value);
+      if (finite(xValue)) next.xValue = xValue;
+      if (finite(yValue)) next.yValue = yValue;
+      if (finite(next.xValue) || finite(next.yValue)) chartPointerStates.set(chartId, next);
+    });
+  }
 
   const setGraphic = (invisible, y = NaN) => {
     const rect = chartGridRect(chart);
@@ -1127,35 +1419,99 @@ function installHorizontalCrosshair(chart) {
     const rect = chartGridRect(chart);
     if (x < rect.x || x > rect.x + rect.width || y < rect.y || y > rect.y + rect.height) {
       pendingY = NaN;
+      if (chartId) chartPointerStates.delete(chartId);
+      hideCoordinateTooltip();
       setGraphic(true);
       return;
     }
+    updateChartPointerState(chart, chartId, x, y);
+    showCoordinateTooltip(chart, chartId, x, y);
     pendingY = clamp(y, rect.y, rect.y + rect.height);
     schedule();
   });
 
   zr.on("globalout", () => {
     pendingY = NaN;
+    if (chartId) chartPointerStates.delete(chartId);
+    hideCoordinateTooltip();
     setGraphic(true);
   });
 }
 
-function setChart(id, option) {
+function setChart(id, option, context = null) {
   if (!window.echarts) throw new Error("ECharts failed to load from the CDN.");
   let chart = chartInstances.get(id);
   if (!chart) {
     chart = window.echarts.init(document.getElementById(id), null, { renderer: "canvas" });
     chartInstances.set(id, chart);
-    installHorizontalCrosshair(chart);
+    chart.__coordinateTooltipContext = context;
+    installHorizontalCrosshair(chart, id);
+  } else {
+    chart.__coordinateTooltipContext = context;
   }
+  chartPointerStates.delete(id);
+  hideCoordinateTooltip();
   chart.clear();
   chart.setOption(option, { notMerge: true });
 }
 
+function installDashboardNavigation() {
+  const navigation = document.querySelector(".section-nav");
+  if (!navigation || navigation.__dashboardNavigationInstalled) return;
+  navigation.__dashboardNavigationInstalled = true;
+  const links = [...navigation.querySelectorAll("a[href^=\"#\"]")];
+  const setCurrentLink = (sectionId) => {
+    links.forEach((link) => {
+      if (link.getAttribute("href") === `#${sectionId}`) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    });
+  };
+  links.forEach((link) => link.addEventListener("click", () => setCurrentLink(link.getAttribute("href").slice(1))));
+
+  const diagnosticsLink = document.querySelector("#rail-diagnostics-link");
+  diagnosticsLink?.addEventListener("click", () => {
+    document.querySelector("#diagnostics-section").open = true;
+    document.querySelector(".rail-health-details").open = false;
+  });
+
+  const sectionByElement = new Map(links.map((link) => {
+    const id = link.getAttribute("href").slice(1);
+    return [document.querySelector(`#${id}`), id];
+  }).filter(([element]) => element));
+  const dock = document.querySelector(".control-dock");
+  const getDockOffset = () => {
+    const measured = dock?.getBoundingClientRect().height || 96;
+    const offset = window.innerWidth <= 760 ? 16 : Math.ceil(measured + 12);
+    document.documentElement.style.setProperty("--control-dock-offset", `${offset}px`);
+    return offset;
+  };
+  let observer = null;
+  const observeSections = () => {
+    if (typeof window.IntersectionObserver !== "function") return;
+    observer?.disconnect();
+    observer = new window.IntersectionObserver((entries) => {
+      const visible = entries.filter((entry) => entry.isIntersecting)
+        .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
+      if (visible.length) setCurrentLink(sectionByElement.get(visible[0].target));
+    }, { rootMargin: `-${getDockOffset()}px 0px -62% 0px`, threshold: [0, 0.1, 0.4] });
+    sectionByElement.forEach((_, section) => observer.observe(section));
+    navigation.__sectionObserver = observer;
+  };
+  observeSections();
+  if (dock && typeof window.ResizeObserver === "function") {
+    const resizeObserver = new window.ResizeObserver(() => observeSections());
+    resizeObserver.observe(dock);
+    navigation.__dockResizeObserver = resizeObserver;
+  }
+}
+
 function renderDashboard(model, payload, responseStatus, elapsedMs) {
   dom.title.textContent = `${model.company} (${model.ticker})`;
-  dom.marketSummary.textContent = `${formatMoney(model.currentPrice, model.currency)} · Market cap ${formatCompactMoney(model.marketCap, model.currency)} · ${model.prices.at(-1).date}`;
+  dom.marketSummary.textContent = `Market cap ${formatCompactMoney(model.marketCap, model.currency)} · ${model.prices.at(-1).date}`;
   dom.dashboard.hidden = false;
+  document.body.classList.add("dashboard-ready");
+  installDashboardNavigation();
+  renderValuationRail(model, payload);
   renderFcfChart(model);
   renderMultipleChart(model, "per-chart", "per-caption", "eps", "PER", model.analystEps, "Analyst +1Y EPS/share avg");
   renderMultipleChart(model, "psr-chart", "psr-caption", "revenuePerShare", "PSR", model.analystRevenuePerShare, "Analyst +1Y Revenue/share avg");
@@ -1203,7 +1559,7 @@ function normalizeWorkerUrl(value) {
 
 function tickerValue(value) {
   const ticker = value.trim().toUpperCase();
-  if (!/^[A-Z0-9][A-Z0-9.^=-]{0,14}$/.test(ticker)) throw new Error("Ticker 형식이 올바르지 않습니다.");
+  if (!/^[A-Z0-9][A-Z0-9.^=-]{0,14}$/.test(ticker)) throw new Error("Invalid ticker format.");
   return ticker;
 }
 
@@ -1229,7 +1585,7 @@ async function analyze(event) {
     localStorage.setItem("stockDashboardWorkerUrl", workerUrl);
     const endpoint = `${workerUrl}/api/stock?symbol=${encodeURIComponent(ticker)}`;
     setLoading(true);
-    setStatus("loading", `${ticker}: Worker가 Yahoo 데이터를 순차 조회하는 중…`);
+    setStatus("loading", `${ticker}: Fetching Yahoo data through the Worker…`);
     const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
     let payload;
     try {
@@ -1247,7 +1603,7 @@ async function analyze(event) {
     );
     const quoteAuth = payload.data.quote?.auth;
     if (failed.length) {
-      setStatus("warning", `${ticker}: 표시 완료 · 일부 endpoint 실패 (${failed.join(", ")})`, `${(elapsed / 1000).toFixed(1)}s`);
+      setStatus("warning", `${ticker}: Dashboard ready · Some endpoints failed (${failed.join(", ")})`, `${(elapsed / 1000).toFixed(1)}s`);
     } else if (quoteAuth?.refreshedAfter401) {
       setStatus("success", `${ticker}: dashboard ready · Yahoo session refreshed after 401`, `${(elapsed / 1000).toFixed(1)}s`);
     } else {

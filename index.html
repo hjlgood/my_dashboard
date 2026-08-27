@@ -1,121 +1,200 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260826-3">
+  <link rel="stylesheet" href="style.css?v=20260828-3">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script src="main.js?v=20260827-1" defer></script>
+  <script src="main.js?v=20260828-3" defer></script>
 </head>
 <body>
   <div class="page-shell">
     <header class="hero">
-      <p class="eyebrow">BROWSER-NATIVE VALUE DASHBOARD</p>
+      <p class="eyebrow">Equity research terminal</p>
       <h1 id="company-title">Stock Value Dashboard</h1>
       <p id="market-summary" class="market-summary">
-        Ticker를 입력해 분석을 시작하세요.
+        Enter a ticker to begin your analysis.
       </p>
     </header>
 
-    <section class="query-panel" aria-label="Stock query controls">
-      <form id="stock-form" class="query-form">
-        <label class="field ticker-field" for="ticker-input">
-          <span>Ticker</span>
-          <input
-            id="ticker-input"
-            name="ticker"
-            value="ADBE"
-            maxlength="15"
-            autocomplete="off"
-            spellcheck="false"
-            required
-          >
-        </label>
-
-        <button id="analyze-button" type="submit">
-          <span class="button-label">Analyze</span>
-          <span class="button-spinner" aria-hidden="true"></span>
-        </button>
-
-        <details id="worker-settings" class="worker-settings">
-          <summary>
-            <span>Advanced data source</span>
-            <span class="settings-summary-detail">Cloudflare Worker</span>
-          </summary>
-          <label class="field worker-field" for="worker-url-input">
-            <span>Cloudflare Worker URL</span>
+    <div class="control-dock">
+      <section class="query-panel" aria-label="Stock query controls">
+        <form id="stock-form" class="query-form">
+          <label class="field ticker-field" for="ticker-input">
+            <span>Ticker</span>
             <input
-              id="worker-url-input"
-              name="workerUrl"
-              type="url"
-              placeholder="https://my-worker.example.workers.dev"
-              autocomplete="url"
+              id="ticker-input"
+              name="ticker"
+              value="ADBE"
+              maxlength="15"
+              autocomplete="off"
               spellcheck="false"
+              required
             >
           </label>
-        </details>
-      </form>
 
-      <div class="status-row" role="status" aria-live="polite">
-        <span id="status-dot" class="status-dot idle"></span>
-        <span id="status-text">Ready</span>
-        <span id="elapsed-text" class="elapsed-text"></span>
-      </div>
-    </section>
+          <button id="analyze-button" type="submit">
+            <span class="button-label">Analyze</span>
+            <span class="button-spinner" aria-hidden="true"></span>
+          </button>
+
+          <details id="worker-settings" class="worker-settings">
+            <summary>
+              <span>Data source</span>
+              <span class="settings-summary-detail">Cloudflare Worker</span>
+            </summary>
+            <label class="field worker-field" for="worker-url-input">
+              <span>Cloudflare Worker URL</span>
+              <input
+                id="worker-url-input"
+                name="workerUrl"
+                type="url"
+                placeholder="https://my-worker.example.workers.dev"
+                autocomplete="url"
+                spellcheck="false"
+              >
+            </label>
+          </details>
+        </form>
+
+        <div class="status-row" role="status" aria-live="polite">
+          <span id="status-dot" class="status-dot idle"></span>
+          <span id="status-text">Ready</span>
+          <span id="elapsed-text" class="elapsed-text"></span>
+        </div>
+      </section>
+
+      <nav class="section-nav" aria-label="Dashboard sections">
+        <a href="#fcf-section">01 FCF</a>
+        <a href="#per-section">02 PER</a>
+        <a href="#psr-section">03 PSR</a>
+        <a href="#quality-section">04 Quality</a>
+        <a href="#metrics-section">05 Metrics</a>
+      </nav>
+    </div>
+
+    <div id="coordinate-tooltip" class="coordinate-tooltip" role="tooltip" aria-hidden="true" hidden></div>
 
     <main id="dashboard" class="dashboard" hidden>
-      <section class="chart-card">
-        <div class="card-heading">
+      <section class="valuation-rail" aria-labelledby="valuation-rail-title">
+        <header class="rail-header">
           <div>
-            <p class="chart-kicker">OWNER EARNINGS VIEW</p>
-            <h2>1. FCF-SBC Yield Bands &amp; One-Year Projected Prices</h2>
+            <p class="rail-kicker">Decision snapshot</p>
+            <h2 id="valuation-rail-title">Valuation rail</h2>
           </div>
-          <p class="chart-method">Red 3% → Green 8% · Gray = 1Y scenarios</p>
+          <p id="rail-context" class="rail-context">Ticker</p>
+        </header>
+
+        <div class="rail-metrics" aria-label="Valuation snapshot metrics">
+          <div class="rail-metric">
+            <span class="rail-horizon">Current</span>
+            <span class="rail-metric-label">Price</span>
+            <strong id="rail-current-price">N/A</strong>
+          </div>
+          <div class="rail-metric">
+            <span class="rail-horizon">Current</span>
+            <span class="rail-metric-label">FCF-SBC yield</span>
+            <strong id="rail-current-yield">N/A</strong>
+          </div>
+          <div class="rail-metric">
+            <span class="rail-horizon">10Y</span>
+            <span class="rail-metric-label">Base implied IRR</span>
+            <strong id="rail-base-irr">N/A</strong>
+          </div>
+          <details class="rail-metric rail-health-details">
+            <summary>
+              <span class="rail-horizon">Source</span>
+              <span class="rail-metric-label">Data health</span>
+              <strong id="rail-data-health">N/A</strong>
+            </summary>
+            <div class="rail-health-popover">
+              <p id="rail-health-summary">Endpoint status unavailable.</p>
+              <ul id="rail-health-list"></ul>
+              <a id="rail-diagnostics-link" href="#diagnostics-section">Open diagnostics</a>
+            </div>
+          </details>
+        </div>
+
+        <div id="valuation-track" class="valuation-track" role="img" aria-label="One-year valuation scenario rail">
+          <div class="valuation-track-meta">
+            <span class="rail-horizon">1Y</span>
+            <span>Return range · −50% to +50%</span>
+          </div>
+          <span class="valuation-track-line" aria-hidden="true"></span>
+          <span class="valuation-track-tick valuation-track-tick-low" aria-hidden="true">−50%</span>
+          <span class="valuation-track-tick valuation-track-tick-mid" aria-hidden="true">0%</span>
+          <span class="valuation-track-tick valuation-track-tick-high" aria-hidden="true">+50%</span>
+          <span id="rail-current-marker" class="rail-marker rail-marker-current">
+            <span class="rail-marker-label">Current <strong id="rail-current-track-value">N/A</strong></span>
+          </span>
+          <span id="rail-bear-marker" class="rail-marker rail-marker-target">
+            <span class="rail-marker-label">Bear <strong id="rail-bear-value">N/A</strong></span>
+          </span>
+          <span id="rail-base-marker" class="rail-marker rail-marker-target rail-marker-base">
+            <span class="rail-marker-label">Base <strong id="rail-base-value">N/A</strong></span>
+          </span>
+          <span id="rail-bull-marker" class="rail-marker rail-marker-target">
+            <span class="rail-marker-label">Bull <strong id="rail-bull-value">N/A</strong></span>
+          </span>
+        </div>
+      </section>
+
+      <section id="fcf-section" class="chart-card">
+        <div class="card-heading">
+          <div class="card-copy">
+            <p class="chart-kicker">Owner earnings</p>
+            <h2>1. FCF-SBC Yield Bands &amp; One-Year Projected Prices</h2>
+            <p id="fcf-insight" class="chart-insight" hidden></p>
+          </div>
+          <p class="chart-method">Yield references: 3%, 4%, 5%, 6%, 8% · Gray = 1Y scenarios</p>
         </div>
         <div id="fcf-chart" class="chart chart-tall" role="img" aria-label="FCF minus SBC yield bands"></div>
         <div id="fcf-caption" class="chart-caption"></div>
       </section>
 
-      <section class="chart-card">
+      <section id="per-section" class="chart-card">
         <div class="card-heading">
-          <div>
-            <p class="chart-kicker">EARNINGS VALUATION</p>
+          <div class="card-copy">
+            <p class="chart-kicker">Earnings valuation</p>
             <h2>2. Historical &amp; Forward PER Price Bands</h2>
+            <p id="per-insight" class="chart-insight" hidden></p>
           </div>
-          <p class="chart-method">Dashed = historical bands · PER &gt; 100x excluded · Point = analyst +1Y</p>
+          <p class="chart-method">Historical percentiles · PER &gt; 100x excluded · Analyst +1Y driver</p>
         </div>
         <div id="per-chart" class="chart chart-tall" role="img" aria-label="PER price bands"></div>
         <div id="per-caption" class="chart-caption"></div>
       </section>
 
-      <section class="chart-card">
+      <section id="psr-section" class="chart-card">
         <div class="card-heading">
-          <div>
-            <p class="chart-kicker">SALES VALUATION</p>
+          <div class="card-copy">
+            <p class="chart-kicker">Sales valuation</p>
             <h2>3. Historical &amp; Forward PSR Price Bands</h2>
+            <p id="psr-insight" class="chart-insight" hidden></p>
           </div>
-          <p class="chart-method">Dashed = historical multiple bands · Point = analyst +1Y</p>
+          <p class="chart-method">Historical percentiles · Analyst +1Y revenue driver</p>
         </div>
         <div id="psr-chart" class="chart chart-tall" role="img" aria-label="PSR price bands"></div>
         <div id="psr-caption" class="chart-caption"></div>
       </section>
 
-      <section class="chart-card">
+      <section id="quality-section" class="chart-card">
         <div class="card-heading">
-          <div>
-            <p class="chart-kicker">BUSINESS QUALITY</p>
+          <div class="card-copy">
+            <p class="chart-kicker">Business quality</p>
             <h2>4. Per-Share Fundamentals &amp; ROIC</h2>
+            <p id="fundamentals-insight" class="chart-insight" hidden></p>
           </div>
-          <p class="chart-method">Index = first usable period 100 · ROIC = right axis</p>
+          <p id="fundamentals-method" class="chart-method">Common baseline when available · ROIC = right axis</p>
         </div>
         <div id="fundamentals-chart" class="chart chart-fundamentals" role="img" aria-label="Per-share fundamentals and ROIC"></div>
         <div id="fundamentals-caption" class="chart-caption"></div>
       </section>
 
-      <section class="metrics-board" aria-label="Current valuation metrics">
+      <section id="metrics-section" class="metrics-board" aria-label="Current valuation metrics">
         <article class="metric-section">
           <h2>Profitability &amp; Quality</h2>
           <dl id="profitability-metrics" class="metric-list"></dl>
@@ -130,7 +209,7 @@
         </article>
       </section>
 
-      <details class="diagnostics">
+      <details id="diagnostics-section" class="diagnostics">
         <summary>Data source, Yahoo authentication &amp; diagnostics</summary>
         <pre id="diagnostic-output"></pre>
       </details>
