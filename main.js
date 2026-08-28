@@ -25,12 +25,14 @@ const COLORS = Object.freeze({
   roic: "#aa9abb",
 });
 
-const YIELD_COLORS = ["#68757a", "#7c898e", "#b5c0c4", "#7c898e", "#68757a"];
-const BAND_COLORS = ["#68757a", "#7c898e", "#b5c0c4", "#7c898e", "#68757a"];
+const YIELD_COLORS = ["#87989e", "#73878e", "#cbd5d8", "#687a80", "#56666b"];
+const YIELD_LINE_TYPES = ["dotted", "dashed", "solid", "dashed", "dotted"];
+const BAND_COLORS = ["#637c86", "#77949e", "#d6dfe2", "#9a8d7d", "#7c6d63"];
+const BAND_LINE_TYPES = ["dotted", "dashed", "solid", "dashed", "dotted"];
 const BAND_SMOOTH = 0.80;
 const NUMERIC_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-const CHART_GRID = Object.freeze({ left: 64, right: 68, top: 44, bottom: 53 });
-const RETURN_RAIL = Object.freeze({ low: -0.50, high: 0.50 });
+const CHART_GRID = Object.freeze({ left: 74, right: 84, top: 42, bottom: 56 });
+const RETURN_RAIL = Object.freeze({ minimumMagnitude: 0.50, step: 0.25, maximumMagnitude: 2.00 });
 const ENDPOINT_IMPACTS = Object.freeze({
   chart: "Price history and charts 1–3",
   fundamentals: "Chart 4 and historical drivers",
@@ -50,6 +52,7 @@ const dom = {
   statusDot: document.querySelector("#status-dot"),
   statusText: document.querySelector("#status-text"),
   elapsed: document.querySelector("#elapsed-text"),
+  loadingProgress: document.querySelector("#loading-progress"),
   title: document.querySelector("#company-title"),
   marketSummary: document.querySelector("#market-summary"),
   dashboard: document.querySelector("#dashboard"),
@@ -649,6 +652,18 @@ function formatAxisPrice(value, model) {
   return formatMoney(rawNumber(value), model.currency, 2);
 }
 
+function formatCompactAxisPrice(value, model) {
+  const numeric = rawNumber(value);
+  if (!finite(numeric)) return "N/A";
+  const symbol = currencySymbol(model.currency);
+  const absolute = Math.abs(numeric);
+  if (absolute >= 1000) {
+    const digits = absolute >= 10000 ? 0 : 1;
+    return `${symbol}${(numeric / 1000).toFixed(digits)}k`;
+  }
+  return `${symbol}${absolute >= 100 ? Math.round(numeric) : numeric.toFixed(absolute < 10 ? 1 : 0)}`;
+}
+
 function formatHoverTooltip(params, model, priceChart, chartId, coordinateTooltip) {
   const entries = Array.isArray(params) ? params : [params];
   const actual = entries.find((item) => item?.seriesName === "Actual price");
@@ -674,6 +689,8 @@ function endLabelAtLineRight(offsetX = 8) {
       y: labelRect.y + labelRect.height / 2,
       align: "left",
       verticalAlign: "middle",
+      moveOverlap: "shiftY",
+      hideOverlap: false,
     };
   };
 }
@@ -686,7 +703,7 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
     backgroundColor: "transparent",
     textStyle: { color: COLORS.text, fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" },
     grid: { ...CHART_GRID, containLabel: false },
-    legend: { top: 3, left: 4, textStyle: { color: "#aeb8bb", fontSize: 10 }, itemWidth: 16, itemHeight: 7 },
+    legend: { top: 3, left: 4, textStyle: { color: "#b8c2c5", fontSize: 11 }, itemWidth: 16, itemHeight: 7 },
     tooltip: {
       trigger: "axis",
       showContent: !coordinateTooltip,
@@ -699,13 +716,13 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
           show: true,
           backgroundColor: "#263238",
           color: "#e7edef",
-          fontSize: 10,
+          fontSize: 11,
           fontFamily: NUMERIC_FONT,
         },
       },
       backgroundColor: "rgba(3,6,7,0.96)",
       borderColor: "#4a5559",
-      textStyle: { color: "#e7edef", fontSize: 11 },
+      textStyle: { color: "#e7edef", fontSize: 12 },
       formatter: (params) => formatHoverTooltip(params, model, priceChart, chartId, coordinateTooltip),
     },
     xAxis: {
@@ -715,7 +732,7 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
       boundaryGap: false,
       axisLine: { lineStyle: { color: "#687277" } },
       axisTick: { lineStyle: { color: "#687277" } },
-      axisLabel: { color: "#8f9a9e", fontSize: 10, fontFamily: NUMERIC_FONT, hideOverlap: true, formatter: { year: "{yyyy}", month: "{MMM}" } },
+      axisLabel: { color: "#a2adaf", fontSize: 11, fontFamily: NUMERIC_FONT, hideOverlap: true, formatter: { year: "{yyyy}", month: "{MMM}" } },
       splitLine: { show: false },
       axisPointer: {
         show: true,
@@ -728,7 +745,7 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
             formatter: (params) => formatAxisDate(params.value),
             backgroundColor: "#263238",
             color: "#e7edef",
-            fontSize: 10,
+            fontSize: 11,
             fontFamily: NUMERIC_FONT,
           },
         } : {}),
@@ -738,16 +755,16 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
     yAxis: {
       type: "value",
       name: yName,
-      nameTextStyle: { color: "#919da1", fontSize: 10, padding: [0, 0, 0, 4] },
+      nameTextStyle: { color: "#a5b0b2", fontSize: 11, padding: [0, 0, 0, 4] },
       scale: true,
       splitNumber: 6,
       axisLine: { show: true, lineStyle: { color: "#687277" } },
       axisLabel: {
-        color: "#8f9a9e",
-        fontSize: 9,
+        color: "#a2adaf",
+        fontSize: 10,
         fontFamily: NUMERIC_FONT,
         hideOverlap: true,
-        ...(priceChart ? { formatter: (value) => formatAxisPrice(value, model) } : {}),
+        ...(priceChart ? { formatter: (value) => formatCompactAxisPrice(value, model) } : {}),
       },
       splitLine: { lineStyle: { color: COLORS.grid } },
       minorTick: { show: false },
@@ -762,7 +779,7 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
           formatter: (params) => formatAxisPrice(params.value, model),
           backgroundColor: "#263238",
           color: "#e7edef",
-          fontSize: 10,
+          fontSize: 11,
           fontFamily: NUMERIC_FONT,
         },
         lineStyle: { color: "#aeb8bb", width: 1, type: "dashed" },
@@ -780,7 +797,7 @@ function actualPriceSeries(model) {
     type: "line",
     data: model.prices.map((row) => [row.date, row.value]),
     showSymbol: false,
-    lineStyle: { color: COLORS.price, width: 1.7 },
+    lineStyle: { color: COLORS.price, width: 1.9 },
     itemStyle: { color: COLORS.price },
     z: 10,
   };
@@ -830,10 +847,99 @@ function markerPosition(value, low, high) {
 }
 
 function formatRailReturn(value) {
-  if (!finite(value)) return "N/A";
-  if (value < RETURN_RAIL.low) return `≤${formatPercent(RETURN_RAIL.low, 0)}`;
-  if (value > RETURN_RAIL.high) return `≥${formatPercent(RETURN_RAIL.high, 0, true)}`;
-  return formatPercent(value, 1, true);
+  return finite(value) ? formatPercent(value, 1, true) : "N/A";
+}
+
+function setValuationVerdict(model, warningCount = 0) {
+  const element = document.querySelector("#rail-verdict");
+  if (!element) return;
+  const baseReturn = model.scenarios.Base?.totalReturn;
+  const baseIrr = model.baseImpliedIrr;
+  const returnMessage = !finite(baseReturn)
+    ? "Base-case 1Y return unavailable"
+    : baseReturn >= 0.15
+      ? "Base case shows material 1Y upside"
+      : baseReturn >= 0.05
+        ? "Base case shows moderate 1Y upside"
+        : baseReturn >= 0
+          ? "Base case shows limited 1Y upside"
+          : "Base case shows 1Y downside";
+  const irrMessage = !finite(baseIrr)
+    ? "10Y IRR unavailable"
+    : baseIrr >= MODEL.requiredReturn
+      ? `10Y IRR clears the ${formatPercent(MODEL.requiredReturn, 0)} model hurdle`
+      : `10Y IRR is below the ${formatPercent(MODEL.requiredReturn, 0)} model hurdle`;
+  const positive = finite(baseReturn) && baseReturn >= 0.05 && finite(baseIrr) && baseIrr >= MODEL.requiredReturn;
+  const negative = finite(baseReturn) && baseReturn < 0 && finite(baseIrr) && baseIrr < MODEL.requiredReturn;
+  element.className = `rail-verdict ${positive ? "verdict-positive" : negative ? "verdict-negative" : "verdict-caution"}`;
+  const verdictCopy = document.createElement("span");
+  verdictCopy.className = "rail-verdict-copy";
+  verdictCopy.textContent = `${returnMessage} · ${irrMessage}`;
+  element.replaceChildren(verdictCopy);
+  if (warningCount > 0) {
+    const qualifier = document.createElement("span");
+    qualifier.className = "rail-verdict-qualifier";
+    qualifier.textContent = `Qualified by ${warningCount} data warning${warningCount === 1 ? "" : "s"}`;
+    element.append(qualifier);
+  }
+}
+
+function adaptiveReturnRail(values) {
+  const largestMagnitude = Math.max(
+    RETURN_RAIL.minimumMagnitude,
+    ...values.filter(finite).map((value) => Math.abs(value)),
+  );
+  const paddedMagnitude = largestMagnitude + RETURN_RAIL.step * 0.08;
+  const magnitude = Math.min(
+    RETURN_RAIL.maximumMagnitude,
+    Math.ceil(paddedMagnitude / RETURN_RAIL.step) * RETURN_RAIL.step,
+  );
+  return { low: -magnitude, high: magnitude };
+}
+
+function dataCoverageChecks(model) {
+  const latestPriceDate = model.prices.at(-1)?.date;
+  const latestPriceTime = latestPriceDate ? new Date(`${latestPriceDate}T00:00:00Z`).getTime() : NaN;
+  const ageDays = finite(latestPriceTime) ? Math.max(0, Math.floor((Date.now() - latestPriceTime) / 86400000)) : NaN;
+  const baselineFields = ["revenuePerShare", "adjustedFcfPerShare", "eps", "shares"];
+  const baselineDate = findCommonBaselineDate(model.fundamentals, baselineFields);
+  const hasEpsEstimate = model.analystEps > 0;
+  const hasRevenueEstimate = model.analystRevenuePerShare > 0;
+  const estimateDetail = hasEpsEstimate && hasRevenueEstimate
+    ? "EPS and revenue/share estimates available"
+    : hasEpsEstimate
+      ? "EPS available · revenue/share missing"
+      : hasRevenueEstimate
+        ? "Revenue/share available · EPS missing"
+        : "EPS and revenue/share estimates missing";
+  return [
+    {
+      name: "Price coverage",
+      detail: latestPriceDate
+        ? `${model.prices.length} observations · through ${latestPriceDate}${finite(ageDays) ? ` · ${ageDays}d old` : ""}`
+        : "Price history unavailable",
+      impact: "Current price and charts 1–3",
+      ok: model.prices.length >= 30 && finite(ageDays) && ageDays <= 7,
+    },
+    {
+      name: "Fundamentals",
+      detail: `${model.fundamentals.length} periods · ${baselineDate ? `common baseline ${baselineDate}` : "per-series fallback"}`,
+      impact: "Chart 4 and historical valuation drivers",
+      ok: model.fundamentals.length >= 5 && Boolean(baselineDate),
+    },
+    {
+      name: "Analyst estimates",
+      detail: estimateDetail,
+      impact: "Forward PER and PSR regions",
+      ok: hasEpsEstimate && hasRevenueEstimate,
+    },
+    {
+      name: "SBC treatment",
+      detail: model.sbcSource || "Unavailable",
+      impact: "FCF-SBC yield, scenarios and implied IRR",
+      ok: model.sbcSource === "latest four quarters",
+    },
+  ];
 }
 
 function renderValuationRail(model, payload) {
@@ -847,20 +953,26 @@ function renderValuationRail(model, payload) {
   document.querySelector("#rail-current-price").textContent = formatMoney(model.currentPrice, model.currency);
   document.querySelector("#rail-current-yield").textContent = formatPercent(currentYield);
   document.querySelector("#rail-base-irr").textContent = formatPercent(model.baseImpliedIrr);
+  const coverageChecks = dataCoverageChecks(model);
   const healthElement = document.querySelector("#rail-data-health");
-  healthElement.textContent = totalEndpoints ? `${successfulEndpoints}/${totalEndpoints} endpoints` : "N/A";
-  healthElement.classList.toggle("rail-health-warning", totalEndpoints > 0 && successfulEndpoints < totalEndpoints);
   const failedEndpoints = endpointEntries.filter(([, item]) => !item?.ok);
-  document.querySelector("#rail-health-summary").textContent = totalEndpoints === 0
-    ? "Endpoint status is unavailable."
-    : failedEndpoints.length
-      ? `${failedEndpoints.length} of ${totalEndpoints} endpoints failed. Affected views are listed below.`
-      : `All ${totalEndpoints} endpoints responded successfully.`;
-  document.querySelector("#rail-health-list").innerHTML = endpointEntries.map(([name, item]) => {
+  const coverageWarnings = coverageChecks.filter((item) => !item.ok);
+  const warningCount = failedEndpoints.length + coverageWarnings.length + (totalEndpoints ? 0 : 1);
+  setValuationVerdict(model, warningCount);
+  healthElement.textContent = warningCount ? `${warningCount} warning${warningCount === 1 ? "" : "s"}` : "Healthy";
+  healthElement.classList.toggle("rail-health-warning", warningCount > 0);
+  document.querySelector("#rail-health-summary").textContent = warningCount
+    ? `${warningCount} source or coverage warning${warningCount === 1 ? "" : "s"}. Review the affected views below.`
+    : `All ${successfulEndpoints} endpoints and model coverage checks are healthy.`;
+  document.querySelector("#rail-health-list").innerHTML = endpointEntries.length ? endpointEntries.map(([name, item]) => {
     const status = item?.ok ? "OK" : item?.status ? `HTTP ${item.status}` : "Failed";
     const statusClass = item?.ok ? "" : " class=\"endpoint-failed\"";
     const impact = ENDPOINT_IMPACTS[name] || "Dependent dashboard data";
     return `<li><span><span class="endpoint-name">${escapeHtml(name)}</span><small>Impact: ${escapeHtml(impact)}</small></span><strong${statusClass}>${escapeHtml(status)}</strong></li>`;
+  }).join("") : "<li><span><span class=\"endpoint-name\">Unavailable</span><small>Impact: Source status cannot be verified</small></span><strong class=\"endpoint-failed\">Check</strong></li>";
+  document.querySelector("#rail-coverage-list").innerHTML = coverageChecks.map((item) => {
+    const statusClass = item.ok ? "" : " class=\"endpoint-failed\"";
+    return `<li><span><span class="endpoint-name">${escapeHtml(item.name)}</span><small>${escapeHtml(item.detail)} · Impact: ${escapeHtml(item.impact)}</small></span><strong${statusClass}>${item.ok ? "OK" : "Review"}</strong></li>`;
   }).join("");
 
   const markers = [
@@ -879,6 +991,11 @@ function renderValuationRail(model, payload) {
   }
 
   track.classList.remove("valuation-track-empty");
+  const railRange = adaptiveReturnRail(usableValues);
+  document.querySelector("#valuation-track-range").textContent =
+    `Scenario returns · adaptive ${formatPercent(railRange.low, 0, true)} to ${formatPercent(railRange.high, 0, true)}`;
+  document.querySelector("#valuation-track-tick-low").textContent = formatPercent(railRange.low, 0, true);
+  document.querySelector("#valuation-track-tick-high").textContent = formatPercent(railRange.high, 0, true);
   const positionedTargets = [];
   for (const marker of markers) {
     const markerElement = document.querySelector(`#${marker.id}`);
@@ -886,10 +1003,12 @@ function renderValuationRail(model, payload) {
     markerElement.hidden = !finite(marker.value);
     valueElement.textContent = formatRailReturn(marker.value);
     if (!finite(marker.value)) continue;
-    const position = markerPosition(marker.value, RETURN_RAIL.low, RETURN_RAIL.high);
+    const position = markerPosition(marker.value, railRange.low, railRange.high);
     markerElement.style.left = `${position}%`;
     markerElement.classList.toggle("rail-marker-edge-left", position < 12);
     markerElement.classList.toggle("rail-marker-edge-right", position > 88);
+    markerElement.classList.toggle("rail-marker-overflow-low", marker.value < railRange.low);
+    markerElement.classList.toggle("rail-marker-overflow-high", marker.value > railRange.high);
     markerElement.title = `${marker.label}: ${formatMoney(marker.targetPrice, model.currency)} (${formatRailReturn(marker.value)})`;
     if (!marker.current) positionedTargets.push({ markerElement, position });
   }
@@ -907,11 +1026,21 @@ function renderValuationRail(model, payload) {
   const scenarioDescription = markers.filter((marker) => finite(marker.value))
     .map((marker) => `${marker.label} ${formatRailReturn(marker.value)}`)
     .join(", ");
-  track.setAttribute("aria-label", `One-year valuation rail using a fixed minus 50% to plus 50% return range: ${scenarioDescription}.`);
+  track.setAttribute("aria-label", `One-year valuation rail using an adaptive ${formatRailReturn(railRange.low)} to ${formatRailReturn(railRange.high)} return range: ${scenarioDescription}.`);
 }
 
 function renderFcfChart(model) {
   const option = commonChartOption(model, `Price (${model.currency})`, "fcf-chart", true);
+  const compact = window.innerWidth <= 760;
+  const veryCompact = window.innerWidth <= 470;
+  option.grid.left = veryCompact ? 50 : compact ? 62 : CHART_GRID.left;
+  option.grid.right = veryCompact ? 58 : compact ? 92 : 164;
+  if (veryCompact) {
+    option.yAxis.name = "";
+    option.yAxis.axisLabel.formatter = (value) => formatCompactAxisPrice(value, model);
+    option.xAxis.splitNumber = 4;
+    option.xAxis.axisLabel.formatter = (value) => String(new Date(value).getUTCFullYear());
+  }
   option.legend.show = false;
   const currentDate = model.prices.at(-1).date;
   const futureDate = addYears(currentDate, 1);
@@ -944,25 +1073,27 @@ function renderFcfChart(model) {
       connectNulls: false,
       lineStyle: {
         color: YIELD_COLORS[index],
-        width: isReference ? 1.5 : 0.9,
-        type: isReference ? "solid" : "dashed",
-        opacity: isReference ? 0.95 : 0.62,
+        width: isReference ? 1.7 : 1,
+        type: YIELD_LINE_TYPES[index],
+        opacity: isReference ? 1 : 0.78,
       },
       itemStyle: { color: YIELD_COLORS[index] },
       endLabel: {
-        show: true,
-        formatter: `${Math.round(MODEL.yields[index] * 100)}%`,
+        show: !compact || isReference,
+        formatter: isReference ? "5% reference" : `${Math.round(MODEL.yields[index] * 100)}%`,
         color: YIELD_COLORS[index],
-        fontSize: 10,
+        fontSize: 11,
+        backgroundColor: "rgba(5,8,9,0.88)",
+        padding: [2, 4],
       },
       labelLayout: { moveOverlap: "shiftY" },
       z: isReference ? 5 : 4,
     });
   });
   const scenarioStyles = {
-    Bear: { color: "#7d878b", type: "dotted", opacity: 0.64 },
-    Base: { color: "#c3cccf", type: "solid", opacity: 0.9 },
-    Bull: { color: "#949fa3", type: "dashed", opacity: 0.72 },
+    Bear: { color: "#d77d70", type: "dotted", opacity: 0.78, symbol: "triangle" },
+    Base: { color: "#dce4e6", type: "solid", opacity: 0.96, symbol: "circle" },
+    Bull: { color: "#78b69f", type: "dashed", opacity: 0.82, symbol: "diamond" },
   };
   for (const name of ["Bear", "Base", "Bull"]) {
     const scenario = model.scenarios[name];
@@ -974,16 +1105,19 @@ function renderFcfChart(model) {
       data: [[currentDate, model.currentPrice], [futureDate, scenario.targetPrice]],
       smooth: 0.32,
       showSymbol: true,
-      symbolSize: 5,
-      lineStyle: { color: scenarioStyle.color, width: 1, type: scenarioStyle.type, opacity: scenarioStyle.opacity },
+      symbol: scenarioStyle.symbol,
+      symbolSize: name === "Base" ? 6 : 7,
+      lineStyle: { color: scenarioStyle.color, width: name === "Base" ? 1.5 : 1.2, type: scenarioStyle.type, opacity: scenarioStyle.opacity },
       itemStyle: { color: scenarioStyle.color },
       endLabel: {
         show: true,
-        formatter: `${name} ${formatPercent(scenario.totalReturn, 1, true)}`,
+        formatter: veryCompact ? name : `${name} ${formatPercent(scenario.totalReturn, 1, true)}`,
         color: scenarioStyle.color,
-        fontSize: 10,
+        fontSize: veryCompact ? 9 : 11,
+        backgroundColor: "rgba(5,8,9,0.9)",
+        padding: [2, 4],
       },
-      labelLayout: endLabelAtLineRight(58),
+      labelLayout: endLabelAtLineRight(veryCompact ? 12 : compact ? 34 : 70),
       z: 2,
     });
   }
@@ -1065,6 +1199,16 @@ function calculateValuationBand(model, field, analystDriver) {
 function renderMultipleChart(model, elementId, captionId, field, name, analystDriver, analystLabel) {
   const calculation = calculateValuationBand(model, field, analystDriver);
   const option = commonChartOption(model, `Price (${model.currency})`, elementId, true);
+  const compact = window.innerWidth <= 760;
+  const veryCompact = window.innerWidth <= 470;
+  option.grid.left = veryCompact ? 50 : compact ? 62 : CHART_GRID.left;
+  option.grid.right = veryCompact ? 52 : compact ? 76 : 124;
+  if (veryCompact) {
+    option.yAxis.name = "";
+    option.yAxis.axisLabel.formatter = (value) => formatCompactAxisPrice(value, model);
+    option.xAxis.splitNumber = 4;
+    option.xAxis.axisLabel.formatter = (value) => String(new Date(value).getUTCFullYear());
+  }
   option.legend.show = false;
   if (calculation.levels.length === 5) {
     for (let index = 0; index < 4; index += 1) {
@@ -1082,16 +1226,18 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
         connectNulls: false,
         lineStyle: {
           color: BAND_COLORS[index],
-          width: isMedian ? 1.4 : 0.9,
-          type: isMedian ? "solid" : "dashed",
-          opacity: isMedian ? 0.95 : 0.58,
+          width: isMedian ? 1.7 : 1,
+          type: BAND_LINE_TYPES[index],
+          opacity: isMedian ? 1 : 0.78,
         },
         itemStyle: { color: BAND_COLORS[index] },
         endLabel: {
-          show: true,
-          formatter: `${calculation.levels[index].toFixed(1)}x`,
+          show: !compact || isMedian,
+          formatter: `${isMedian ? "Median" : `P${[10, 25, 50, 75, 90][index]}`} ${calculation.levels[index].toFixed(1)}x`,
           color: BAND_COLORS[index],
-          fontSize: 10,
+          fontSize: 11,
+          backgroundColor: "rgba(5,8,9,0.9)",
+          padding: [2, 4],
         },
         labelLayout: { moveOverlap: "shiftY" },
         z: isMedian ? 4 : 3,
@@ -1161,8 +1307,16 @@ function normalizedSeries(rows, field, baselineDate = null) {
 
 function renderFundamentalsChart(model) {
   const option = commonChartOption(model, "Indexed change", "fundamentals-chart");
+  const compact = window.innerWidth <= 760;
+  const veryCompact = window.innerWidth <= 470;
+  option.grid.left = veryCompact ? 48 : compact ? 60 : CHART_GRID.left;
   option.legend.show = false;
-  option.grid.right = 68;
+  option.grid.top = 36;
+  option.grid.right = veryCompact ? 48 : compact ? 62 : 132;
+  if (veryCompact) {
+    option.xAxis.splitNumber = 4;
+    option.xAxis.axisLabel.formatter = (value) => String(new Date(value).getUTCFullYear());
+  }
   option.yAxis.splitNumber = 4;
   option.yAxis.axisLabel = {
     ...option.yAxis.axisLabel,
@@ -1172,9 +1326,9 @@ function renderFundamentalsChart(model) {
   option.yAxis.minorSplitLine = { show: false };
   option.yAxis = [option.yAxis, {
     type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 3,
-    nameTextStyle: { color: COLORS.roic, fontSize: 10 },
+    nameTextStyle: { color: COLORS.roic, fontSize: 11 },
     axisLine: { show: true, lineStyle: { color: COLORS.roic } },
-    axisLabel: { color: COLORS.roic, formatter: (value) => `${Math.round(value)}%`, fontSize: 9, fontFamily: NUMERIC_FONT, hideOverlap: true },
+    axisLabel: { color: COLORS.roic, formatter: (value) => `${Math.round(value)}%`, fontSize: 10, fontFamily: NUMERIC_FONT, hideOverlap: true },
     splitLine: { show: false },
     minorTick: { show: false },
     minorSplitLine: { show: false },
@@ -1195,10 +1349,10 @@ function renderFundamentalsChart(model) {
       showSymbol: true, symbolSize: 5, smooth: 0.24,
       lineStyle: { color, width: 1.5 }, itemStyle: { color },
       endLabel: {
-        show: true,
+        show: !compact,
         formatter: `${name} ${formatNumber(latestValue, 0)}`,
         color,
-        fontSize: 10,
+        fontSize: 11,
         distance: 8,
         align: "left",
         backgroundColor: "rgba(5,8,9,0.86)",
@@ -1217,10 +1371,10 @@ function renderFundamentalsChart(model) {
     showSymbol: true, symbolSize: 5, smooth: 0.24,
     lineStyle: { color: COLORS.roic, width: 1.5 }, itemStyle: { color: COLORS.roic },
     endLabel: {
-      show: true,
+      show: !compact,
       formatter: `ROIC ${formatNumber(latestRoic, 1)}%`,
       color: COLORS.roic,
-      fontSize: 10,
+      fontSize: 11,
       distance: 8,
       align: "left",
       backgroundColor: "rgba(5,8,9,0.86)",
@@ -1481,7 +1635,7 @@ function installDashboardNavigation() {
   const dock = document.querySelector(".control-dock");
   const getDockOffset = () => {
     const measured = dock?.getBoundingClientRect().height || 96;
-    const offset = window.innerWidth <= 760 ? 16 : Math.ceil(measured + 12);
+    const offset = Math.ceil(measured + (window.innerWidth <= 760 ? 6 : 12));
     document.documentElement.style.setProperty("--control-dock-offset", `${offset}px`);
     return offset;
   };
@@ -1505,12 +1659,44 @@ function installDashboardNavigation() {
   }
 }
 
+let mobileDockFrame = null;
+
+function updateMobileDockState() {
+  mobileDockFrame = null;
+  const mobile = window.innerWidth <= 760;
+  const dashboardReady = document.body.classList.contains("dashboard-ready");
+  const loading = dom.button.classList.contains("loading");
+  const settingsOpen = dom.workerSettings.open;
+  const heroHeight = document.querySelector(".hero")?.offsetHeight || 96;
+  const shouldCondense = mobile
+    && dashboardReady
+    && !loading
+    && !settingsOpen
+    && window.scrollY > Math.max(96, heroHeight);
+  document.body.classList.toggle("mobile-dock-condensed", shouldCondense);
+}
+
+function scheduleMobileDockUpdate() {
+  if (mobileDockFrame !== null) return;
+  mobileDockFrame = requestAnimationFrame(updateMobileDockState);
+}
+
+function installMobileDockBehavior() {
+  if (document.body.dataset.mobileDockInstalled === "true") return;
+  document.body.dataset.mobileDockInstalled = "true";
+  window.addEventListener("scroll", scheduleMobileDockUpdate, { passive: true });
+  window.addEventListener("resize", scheduleMobileDockUpdate);
+  dom.workerSettings.addEventListener("toggle", scheduleMobileDockUpdate);
+  scheduleMobileDockUpdate();
+}
+
 function renderDashboard(model, payload, responseStatus, elapsedMs) {
   dom.title.textContent = `${model.company} (${model.ticker})`;
   dom.marketSummary.textContent = `Market cap ${formatCompactMoney(model.marketCap, model.currency)} · ${model.prices.at(-1).date}`;
   dom.dashboard.hidden = false;
   document.body.classList.add("dashboard-ready");
   installDashboardNavigation();
+  scheduleMobileDockUpdate();
   renderValuationRail(model, payload);
   renderFcfChart(model);
   renderMultipleChart(model, "per-chart", "per-caption", "eps", "PER", model.analystEps, "Analyst +1Y EPS/share avg");
@@ -1544,6 +1730,7 @@ function renderDashboard(model, payload, responseStatus, elapsedMs) {
       scenarios: model.scenarios,
       reverseImpliedGrowth: model.reverseImpliedGrowth,
       baseImpliedIrr: model.baseImpliedIrr,
+      dataCoverage: dataCoverageChecks(model),
     },
   }, null, 2);
 }
@@ -1569,11 +1756,45 @@ function setStatus(kind, message, elapsed = "") {
   dom.elapsed.textContent = elapsed;
 }
 
+let loadingProgressTimers = [];
+
+function setLoadingProgressStage(activeIndex) {
+  const stages = [...(dom.loadingProgress?.querySelectorAll("li") || [])];
+  stages.forEach((stage, index) => {
+    stage.classList.toggle("active", index === activeIndex);
+    stage.classList.toggle("passed", index < activeIndex);
+    if (index === activeIndex) stage.setAttribute("aria-current", "step");
+    else stage.removeAttribute("aria-current");
+  });
+}
+
+function stopLoadingProgress() {
+  loadingProgressTimers.forEach((timer) => clearTimeout(timer));
+  loadingProgressTimers = [];
+  if (!dom.loadingProgress) return;
+  dom.loadingProgress.hidden = true;
+  setLoadingProgressStage(-1);
+}
+
+function startLoadingProgress() {
+  stopLoadingProgress();
+  if (!dom.loadingProgress) return;
+  setLoadingProgressStage(0);
+  loadingProgressTimers = [
+    setTimeout(() => { dom.loadingProgress.hidden = false; }, 250),
+    setTimeout(() => setLoadingProgressStage(1), 2600),
+    setTimeout(() => setLoadingProgressStage(2), 5200),
+  ];
+}
+
 function setLoading(loading) {
   dom.button.disabled = loading;
   dom.button.classList.toggle("loading", loading);
   dom.ticker.disabled = loading;
   dom.workerUrl.disabled = loading;
+  if (loading) startLoadingProgress();
+  else stopLoadingProgress();
+  scheduleMobileDockUpdate();
 }
 
 async function analyze(event) {
@@ -1640,4 +1861,5 @@ window.addEventListener("resize", () => {
 });
 dom.form.addEventListener("submit", analyze);
 dom.ticker.addEventListener("input", () => { dom.ticker.value = dom.ticker.value.toUpperCase(); });
+installMobileDockBehavior();
 initializeInputs();

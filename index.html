@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260828-3">
+  <link rel="stylesheet" href="style.css?v=20260829-3">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script src="main.js?v=20260828-3" defer></script>
+  <script src="main.js?v=20260829-4" defer></script>
 </head>
 <body>
   <div class="page-shell">
@@ -42,7 +42,7 @@
           </button>
 
           <details id="worker-settings" class="worker-settings">
-            <summary>
+            <summary aria-label="Data source settings">
               <span>Data source</span>
               <span class="settings-summary-detail">Cloudflare Worker</span>
             </summary>
@@ -65,6 +65,11 @@
           <span id="status-text">Ready</span>
           <span id="elapsed-text" class="elapsed-text"></span>
         </div>
+        <ol id="loading-progress" class="loading-progress" aria-label="Analysis loading stages" aria-live="polite" hidden>
+          <li>Price history</li>
+          <li>Fundamentals</li>
+          <li>Estimates</li>
+        </ol>
       </section>
 
       <nav class="section-nav" aria-label="Dashboard sections">
@@ -88,68 +93,84 @@
           <p id="rail-context" class="rail-context">Ticker</p>
         </header>
 
-        <div class="rail-metrics" aria-label="Valuation snapshot metrics">
-          <div class="rail-metric">
-            <span class="rail-horizon">Current</span>
-            <span class="rail-metric-label">Price</span>
-            <strong id="rail-current-price">N/A</strong>
-          </div>
-          <div class="rail-metric">
-            <span class="rail-horizon">Current</span>
-            <span class="rail-metric-label">FCF-SBC yield</span>
-            <strong id="rail-current-yield">N/A</strong>
-          </div>
-          <div class="rail-metric">
-            <span class="rail-horizon">10Y</span>
-            <span class="rail-metric-label">Base implied IRR</span>
-            <strong id="rail-base-irr">N/A</strong>
-          </div>
-          <details class="rail-metric rail-health-details">
-            <summary>
-              <span class="rail-horizon">Source</span>
-              <span class="rail-metric-label">Data health</span>
-              <strong id="rail-data-health">N/A</strong>
-            </summary>
-            <div class="rail-health-popover">
-              <p id="rail-health-summary">Endpoint status unavailable.</p>
-              <ul id="rail-health-list"></ul>
-              <a id="rail-diagnostics-link" href="#diagnostics-section">Open diagnostics</a>
-            </div>
-          </details>
-        </div>
+        <div class="rail-body">
+          <p id="rail-verdict" class="rail-verdict">Awaiting valuation data.</p>
 
-        <div id="valuation-track" class="valuation-track" role="img" aria-label="One-year valuation scenario rail">
-          <div class="valuation-track-meta">
-            <span class="rail-horizon">1Y</span>
-            <span>Return range · −50% to +50%</span>
+          <div class="rail-metrics" aria-label="Valuation snapshot metrics">
+            <div class="rail-metric-group rail-current-group">
+              <span class="rail-group-label">Current snapshot</span>
+              <div class="rail-group-values">
+                <div class="rail-metric">
+                  <span class="rail-metric-label">Price</span>
+                  <strong id="rail-current-price">N/A</strong>
+                </div>
+                <div class="rail-metric">
+                  <span class="rail-metric-label">FCF-SBC yield</span>
+                  <strong id="rail-current-yield">N/A</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="rail-metric-group rail-long-term-group">
+              <span class="rail-group-label">Long-term · 10Y</span>
+              <div class="rail-metric">
+                <span class="rail-metric-label">Base implied IRR</span>
+                <strong id="rail-base-irr">N/A</strong>
+              </div>
+            </div>
+
+            <details class="rail-metric-group rail-health-details">
+              <summary>
+                <span class="rail-group-label">Source &amp; coverage</span>
+                <span class="rail-metric-label">Data health</span>
+                <strong id="rail-data-health">N/A</strong>
+              </summary>
+              <div class="rail-health-popover">
+                <p id="rail-health-summary">Endpoint and model coverage unavailable.</p>
+                <h3>Endpoint status</h3>
+                <ul id="rail-health-list"></ul>
+                <h3>Model coverage</h3>
+                <ul id="rail-coverage-list"></ul>
+                <a id="rail-diagnostics-link" href="#diagnostics-section">Open diagnostics</a>
+              </div>
+            </details>
           </div>
-          <span class="valuation-track-line" aria-hidden="true"></span>
-          <span class="valuation-track-tick valuation-track-tick-low" aria-hidden="true">−50%</span>
-          <span class="valuation-track-tick valuation-track-tick-mid" aria-hidden="true">0%</span>
-          <span class="valuation-track-tick valuation-track-tick-high" aria-hidden="true">+50%</span>
-          <span id="rail-current-marker" class="rail-marker rail-marker-current">
-            <span class="rail-marker-label">Current <strong id="rail-current-track-value">N/A</strong></span>
-          </span>
-          <span id="rail-bear-marker" class="rail-marker rail-marker-target">
-            <span class="rail-marker-label">Bear <strong id="rail-bear-value">N/A</strong></span>
-          </span>
-          <span id="rail-base-marker" class="rail-marker rail-marker-target rail-marker-base">
-            <span class="rail-marker-label">Base <strong id="rail-base-value">N/A</strong></span>
-          </span>
-          <span id="rail-bull-marker" class="rail-marker rail-marker-target">
-            <span class="rail-marker-label">Bull <strong id="rail-bull-value">N/A</strong></span>
-          </span>
+
+          <div id="valuation-track" class="valuation-track" role="img" aria-label="One-year valuation scenario rail">
+            <div class="valuation-track-meta">
+              <span class="rail-group-label">Near-term · 1Y</span>
+              <span id="valuation-track-range">Scenario returns · adaptive range</span>
+            </div>
+            <span class="valuation-track-line" aria-hidden="true"></span>
+            <span id="valuation-track-tick-low" class="valuation-track-tick valuation-track-tick-low" aria-hidden="true">−50%</span>
+            <span class="valuation-track-tick valuation-track-tick-mid" aria-hidden="true">0%</span>
+            <span id="valuation-track-tick-high" class="valuation-track-tick valuation-track-tick-high" aria-hidden="true">+50%</span>
+            <span id="rail-current-marker" class="rail-marker rail-marker-current">
+              <span class="rail-marker-label">Current <strong id="rail-current-track-value">N/A</strong></span>
+            </span>
+            <span id="rail-bear-marker" class="rail-marker rail-marker-target">
+              <span class="rail-marker-label">Bear <strong id="rail-bear-value">N/A</strong></span>
+            </span>
+            <span id="rail-base-marker" class="rail-marker rail-marker-target rail-marker-base">
+              <span class="rail-marker-label">Base <strong id="rail-base-value">N/A</strong></span>
+            </span>
+            <span id="rail-bull-marker" class="rail-marker rail-marker-target">
+              <span class="rail-marker-label">Bull <strong id="rail-bull-value">N/A</strong></span>
+            </span>
+          </div>
         </div>
       </section>
 
       <section id="fcf-section" class="chart-card">
         <div class="card-heading">
           <div class="card-copy">
-            <p class="chart-kicker">Owner earnings</p>
-            <h2>1. FCF-SBC Yield Bands &amp; One-Year Projected Prices</h2>
+            <h2>FCF-SBC Yield Bands &amp; One-Year Projected Prices</h2>
             <p id="fcf-insight" class="chart-insight" hidden></p>
           </div>
-          <p class="chart-method">Yield references: 3%, 4%, 5%, 6%, 8% · Gray = 1Y scenarios</p>
+          <details class="chart-method">
+            <summary>Method</summary>
+            <p>Yield references: 3%, 4%, 5%, 6%, 8% · Bear red · Base white · Bull green</p>
+          </details>
         </div>
         <div id="fcf-chart" class="chart chart-tall" role="img" aria-label="FCF minus SBC yield bands"></div>
         <div id="fcf-caption" class="chart-caption"></div>
@@ -158,11 +179,13 @@
       <section id="per-section" class="chart-card">
         <div class="card-heading">
           <div class="card-copy">
-            <p class="chart-kicker">Earnings valuation</p>
-            <h2>2. Historical &amp; Forward PER Price Bands</h2>
+            <h2>Historical &amp; Forward PER Price Bands</h2>
             <p id="per-insight" class="chart-insight" hidden></p>
           </div>
-          <p class="chart-method">Historical percentiles · PER &gt; 100x excluded · Analyst +1Y driver</p>
+          <details class="chart-method">
+            <summary>Method</summary>
+            <p>Historical percentiles · PER &gt; 100x excluded · Analyst +1Y driver</p>
+          </details>
         </div>
         <div id="per-chart" class="chart chart-tall" role="img" aria-label="PER price bands"></div>
         <div id="per-caption" class="chart-caption"></div>
@@ -171,11 +194,13 @@
       <section id="psr-section" class="chart-card">
         <div class="card-heading">
           <div class="card-copy">
-            <p class="chart-kicker">Sales valuation</p>
-            <h2>3. Historical &amp; Forward PSR Price Bands</h2>
+            <h2>Historical &amp; Forward PSR Price Bands</h2>
             <p id="psr-insight" class="chart-insight" hidden></p>
           </div>
-          <p class="chart-method">Historical percentiles · Analyst +1Y revenue driver</p>
+          <details class="chart-method">
+            <summary>Method</summary>
+            <p>Historical percentiles · Analyst +1Y revenue driver</p>
+          </details>
         </div>
         <div id="psr-chart" class="chart chart-tall" role="img" aria-label="PSR price bands"></div>
         <div id="psr-caption" class="chart-caption"></div>
@@ -184,11 +209,20 @@
       <section id="quality-section" class="chart-card">
         <div class="card-heading">
           <div class="card-copy">
-            <p class="chart-kicker">Business quality</p>
-            <h2>4. Per-Share Fundamentals &amp; ROIC</h2>
+            <h2>Per-Share Fundamentals &amp; ROIC</h2>
             <p id="fundamentals-insight" class="chart-insight" hidden></p>
           </div>
-          <p id="fundamentals-method" class="chart-method">Common baseline when available · ROIC = right axis</p>
+          <details class="chart-method">
+            <summary>Method</summary>
+            <p id="fundamentals-method">Common baseline when available · ROIC = right axis</p>
+          </details>
+        </div>
+        <div class="fundamentals-legend" aria-label="Fundamentals chart legend">
+          <span><i class="legend-swatch legend-revenue"></i>Revenue/share</span>
+          <span><i class="legend-swatch legend-fcf"></i>FCF-SBC/share</span>
+          <span><i class="legend-swatch legend-eps"></i>GAAP EPS/share</span>
+          <span><i class="legend-swatch legend-shares"></i>Shares</span>
+          <span><i class="legend-swatch legend-roic"></i>ROIC</span>
         </div>
         <div id="fundamentals-chart" class="chart chart-fundamentals" role="img" aria-label="Per-share fundamentals and ROIC"></div>
         <div id="fundamentals-caption" class="chart-caption"></div>
