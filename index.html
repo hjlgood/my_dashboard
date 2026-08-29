@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260830-2">
+  <link rel="stylesheet" href="style.css?v=20260830-7">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script src="main.js?v=20260830-2" defer></script>
+  <script src="main.js?v=20260830-7" defer></script>
 </head>
 <body>
   <div class="page-shell">
@@ -63,6 +63,7 @@
         <div class="status-row" role="status" aria-live="polite">
           <span id="status-dot" class="status-dot idle"></span>
           <span id="status-text">Ready</span>
+          <span id="loading-detail" class="loading-detail" aria-live="polite"></span>
           <span id="elapsed-text" class="elapsed-text"></span>
         </div>
         <ol id="loading-progress" class="loading-progress" aria-label="Analysis loading stages" aria-live="polite" hidden>
@@ -103,6 +104,7 @@
           <a href="#psr-section">03 PSR</a>
           <a href="#quality-section">04 Quality</a>
           <a href="#metrics-section">05 Metrics</a>
+          <a href="#methodology-section">06 Method</a>
         </nav>
         <div class="export-tools" aria-label="Export dashboard">
           <span class="export-tools-label">Export</span>
@@ -130,10 +132,11 @@
             <span>Conditional model readout</span>
             <span>Scenario output · not a forecast</span>
           </div>
-          <div id="rail-data-notice" class="rail-data-notice" hidden>
+          <button id="rail-data-notice" class="rail-data-notice" type="button" aria-controls="rail-health-details" aria-expanded="false" hidden>
             <span class="rail-data-notice-dot" aria-hidden="true"></span>
             <strong id="rail-data-notice-text"></strong>
-          </div>
+            <span class="rail-data-notice-action">Review</span>
+          </button>
           <p id="rail-verdict" class="rail-verdict">Awaiting valuation data.</p>
 
           <div class="rail-metrics" aria-label="Valuation snapshot metrics">
@@ -159,7 +162,7 @@
               </div>
             </div>
 
-            <details class="rail-metric-group rail-health-details">
+            <details id="rail-health-details" class="rail-metric-group rail-health-details">
               <summary>
                 <span class="rail-group-label">Source &amp; coverage</span>
                 <span class="rail-metric-label">Data health</span>
@@ -207,10 +210,6 @@
             <h2>FCF-SBC Yield Bands &amp; One-Year Projected Prices</h2>
             <p id="fcf-insight" class="chart-insight" hidden></p>
           </div>
-          <details class="chart-method">
-            <summary>Method</summary>
-            <p>Yield bands: 3%, 4%, 5%, 6%, 8% · Bear red · Base white · Bull green</p>
-          </details>
         </div>
         <div class="fcf-chart-frame">
           <div id="fcf-chart" class="chart chart-tall" role="img" aria-label="FCF minus SBC yield bands"></div>
@@ -225,10 +224,6 @@
             <h2>Historical &amp; Forward PER Price Bands</h2>
             <p id="per-insight" class="chart-insight" hidden></p>
           </div>
-          <details class="chart-method">
-            <summary>Method</summary>
-            <p>Historical percentiles · PER &gt; 100x excluded · Analyst +1Y driver</p>
-          </details>
         </div>
         <div id="per-chart" class="chart chart-tall" role="img" aria-label="PER price bands"></div>
         <div id="per-caption" class="chart-caption"></div>
@@ -240,10 +235,6 @@
             <h2>Historical &amp; Forward PSR Price Bands</h2>
             <p id="psr-insight" class="chart-insight" hidden></p>
           </div>
-          <details class="chart-method">
-            <summary>Method</summary>
-            <p>Historical percentiles · Analyst +1Y revenue driver</p>
-          </details>
         </div>
         <div id="psr-chart" class="chart chart-tall" role="img" aria-label="PSR price bands"></div>
         <div id="psr-caption" class="chart-caption"></div>
@@ -255,10 +246,6 @@
             <h2>Per-Share Fundamentals &amp; ROIC</h2>
             <p id="fundamentals-insight" class="chart-insight" hidden></p>
           </div>
-          <details class="chart-method">
-            <summary>Method</summary>
-            <p id="fundamentals-method">Common baseline when available · ROIC = right axis</p>
-          </details>
         </div>
         <div class="fundamentals-legend" aria-label="Fundamentals chart legend">
           <span><i class="legend-swatch legend-revenue"></i>Revenue/share</span>
@@ -285,6 +272,28 @@
           <dl id="reverse-metrics" class="metric-list"></dl>
         </article>
       </section>
+
+      <details id="methodology-section" class="methodology-panel">
+        <summary>Methodology &amp; interpretation</summary>
+        <div class="methodology-grid">
+          <section>
+            <h3>FCF-SBC scenarios</h3>
+            <p>Yield bands: 3%, 4%, 5%, 6%, 8%. Bear is red, Base is white, and Bull is green. The scenario rail shows the implied one-year return and target price.</p>
+          </section>
+          <section>
+            <h3>PER bands</h3>
+            <p>Historical price bands use EPS-based percentiles. PER above 100x is excluded; the forward region uses the analyst +1Y EPS/share estimate when available.</p>
+          </section>
+          <section>
+            <h3>PSR bands</h3>
+            <p>Historical price bands use revenue/share percentiles. The forward region uses the analyst +1Y revenue/share estimate when available.</p>
+          </section>
+          <section>
+            <h3>Per-share fundamentals</h3>
+            <p id="fundamentals-method">Common baseline when available · ROIC = right axis</p>
+          </section>
+        </div>
+      </details>
 
       <details id="diagnostics-section" class="diagnostics">
         <summary>Data source, Yahoo authentication &amp; diagnostics</summary>

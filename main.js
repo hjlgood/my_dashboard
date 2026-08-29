@@ -25,8 +25,6 @@ const COLORS = Object.freeze({
   roic: "#aa9abb",
 });
 
-const YIELD_COLORS = ["#87989e", "#73878e", "#cbd5d8", "#687a80", "#56666b"];
-const YIELD_LINE_TYPES = ["dotted", "dashed", "solid", "dashed", "dotted"];
 const BAND_COLORS = ["#637c86", "#77949e", "#d6dfe2", "#9a8d7d", "#7c6d63"];
 const BAND_LINE_TYPES = ["dotted", "dashed", "solid", "dashed", "dotted"];
 const BAND_SMOOTH = 0.80;
@@ -52,10 +50,14 @@ const dom = {
   statusDot: document.querySelector("#status-dot"),
   statusText: document.querySelector("#status-text"),
   elapsed: document.querySelector("#elapsed-text"),
+  loadingDetail: document.querySelector("#loading-detail"),
   loadingProgress: document.querySelector("#loading-progress"),
   mobileIdentityTicker: document.querySelector("#mobile-identity-ticker"),
   mobileIdentityPrice: document.querySelector("#mobile-identity-price"),
   fcfScenarioRail: document.querySelector("#fcf-scenario-rail"),
+  railDataNotice: document.querySelector("#rail-data-notice"),
+  railDataNoticeText: document.querySelector("#rail-data-notice-text"),
+  railHealthDetails: document.querySelector("#rail-health-details"),
   savePngButton: document.querySelector("#save-png-button"),
   saveHtmlButton: document.querySelector("#save-html-button"),
   exportStatus: document.querySelector("#export-status"),
@@ -709,7 +711,7 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
     backgroundColor: "transparent",
     textStyle: { color: COLORS.text, fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" },
     grid: { ...CHART_GRID, containLabel: false },
-    legend: { top: 3, left: 4, textStyle: { color: "#b8c2c5", fontSize: 11 }, itemWidth: 16, itemHeight: 7 },
+    legend: { top: 3, left: 4, textStyle: { color: "#c3ced0", fontSize: 11 }, itemWidth: 16, itemHeight: 7 },
     tooltip: {
       trigger: "axis",
       showContent: !coordinateTooltip,
@@ -738,7 +740,7 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
       boundaryGap: false,
       axisLine: { lineStyle: { color: "#687277" } },
       axisTick: { lineStyle: { color: "#687277" } },
-      axisLabel: { color: "#a2adaf", fontSize: 11, fontFamily: NUMERIC_FONT, hideOverlap: true, formatter: { year: "{yyyy}", month: "{MMM}" } },
+      axisLabel: { color: "#b2bec1", fontSize: 11, fontFamily: NUMERIC_FONT, hideOverlap: true, formatter: { year: "{yyyy}", month: "{MMM}" } },
       splitLine: { show: false },
       axisPointer: {
         show: true,
@@ -761,13 +763,13 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
     yAxis: {
       type: "value",
       name: yName,
-      nameTextStyle: { color: "#a5b0b2", fontSize: 11, padding: [0, 0, 0, 4] },
+      nameTextStyle: { color: "#b2bec1", fontSize: 11, padding: [0, 0, 0, 4] },
       scale: true,
       splitNumber: 6,
       axisLine: { show: true, lineStyle: { color: "#687277" } },
       axisLabel: {
-        color: "#a2adaf",
-        fontSize: 10,
+        color: "#b2bec1",
+        fontSize: 11,
         fontFamily: NUMERIC_FONT,
         hideOverlap: true,
         ...(priceChart ? { formatter: (value) => formatCompactAxisPrice(value, model) } : {}),
@@ -888,6 +890,17 @@ function rgba(hex, alpha) {
   return `rgba(${(number >> 16) & 255},${(number >> 8) & 255},${number & 255},${alpha})`;
 }
 
+function bandAreaFill(color) {
+  if (window.echarts?.graphic?.LinearGradient) {
+    return new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+      { offset: 0, color: rgba(color, 0.13) },
+      { offset: 0.5, color: rgba(color, 0.055) },
+      { offset: 1, color: rgba(color, 0.012) },
+    ]);
+  }
+  return rgba(color, 0.05);
+}
+
 function valuationAreaSeries(name, lower, upper, color) {
   const rows = lower.map((item, index) => [item[0], item[1], upper[index]?.[1]]).filter((item) => finite(item[1]) && finite(item[2]));
   return {
@@ -904,7 +917,7 @@ function valuationAreaSeries(name, lower, upper, color) {
       const p2 = api.coord([api.value(0), api.value(2)]);
       const p3 = api.coord([next[0], next[2]]);
       const p4 = api.coord([next[0], next[1]]);
-      return { type: "polygon", shape: { points: [p1, p2, p3, p4] }, style: { fill: rgba(color, 0.05), stroke: "none" } };
+      return { type: "polygon", shape: { points: [p1, p2, p3, p4] }, style: { fill: bandAreaFill(color), stroke: "none" } };
     },
     z: 0,
   };
@@ -934,26 +947,24 @@ function setValuationVerdict(model) {
   if (!element) return;
   const baseReturn = model.scenarios.Base?.totalReturn;
   const baseIrr = model.baseImpliedIrr;
-  const returnMessage = !finite(baseReturn)
-    ? "Model base-case 1Y output unavailable"
-    : baseReturn >= 0.15
-      ? "Model base case suggests material 1Y upside"
-      : baseReturn >= 0.05
-        ? "Model base case suggests moderate 1Y upside"
-        : baseReturn >= 0
-          ? "Model base case suggests limited 1Y upside"
-          : "Model base case suggests 1Y downside";
+  const returnMessage = finite(baseReturn)
+    ? `Base case ${formatPercent(baseReturn, 1, true)} 1Y return`
+    : "Base case 1Y output unavailable";
   const irrMessage = !finite(baseIrr)
-    ? "Modelled 10Y IRR unavailable"
-    : baseIrr >= MODEL.requiredReturn
-      ? `Modelled 10Y IRR clears the ${formatPercent(MODEL.requiredReturn, 0)} hurdle`
-      : `Modelled 10Y IRR is below the ${formatPercent(MODEL.requiredReturn, 0)} hurdle`;
+    ? "10Y IRR unavailable"
+    : `10Y IRR ${formatPercent(baseIrr)} · ${baseIrr >= MODEL.requiredReturn ? "clears" : "below"} ${formatPercent(MODEL.requiredReturn, 0)} hurdle`;
   const positive = finite(baseReturn) && baseReturn >= 0.05 && finite(baseIrr) && baseIrr >= MODEL.requiredReturn;
   const negative = finite(baseReturn) && baseReturn < 0 && finite(baseIrr) && baseIrr < MODEL.requiredReturn;
   element.className = `rail-verdict ${positive ? "verdict-positive" : negative ? "verdict-negative" : "verdict-caution"}`;
   const verdictCopy = document.createElement("span");
   verdictCopy.className = "rail-verdict-copy";
-  verdictCopy.textContent = `${returnMessage} · ${irrMessage}`;
+  const primary = document.createElement("strong");
+  primary.className = "rail-verdict-primary";
+  primary.textContent = returnMessage;
+  const secondary = document.createElement("span");
+  secondary.className = "rail-verdict-secondary";
+  secondary.textContent = irrMessage;
+  verdictCopy.append(primary, secondary);
   element.replaceChildren(verdictCopy);
 }
 
@@ -1035,14 +1046,19 @@ function renderValuationRail(model, payload) {
   const coverageWarnings = coverageChecks.filter((item) => !item.ok);
   const warningCount = failedEndpoints.length + coverageWarnings.length + (totalEndpoints ? 0 : 1);
   setValuationVerdict(model);
-  const dataNotice = document.querySelector("#rail-data-notice");
-  const dataNoticeText = document.querySelector("#rail-data-notice-text");
-  if (dataNotice && dataNoticeText) {
-    dataNotice.hidden = warningCount === 0;
-    dataNotice.classList.toggle("is-warning", warningCount > 0);
-    dataNoticeText.textContent = warningCount > 0
-      ? `${warningCount} data warning${warningCount === 1 ? "" : "s"} · review before using model output`
+  const warningReasons = [
+    ...failedEndpoints.map(([name, item]) => `${name} endpoint${item?.status ? ` · HTTP ${item.status}` : " · failed"}`),
+    ...coverageWarnings.map((item) => `${item.name} · ${item.detail}`),
+  ];
+  if (dom.railDataNotice && dom.railDataNoticeText) {
+    const reason = warningReasons.slice(0, 2).join(" · ") || "source status unavailable";
+    dom.railDataNotice.hidden = warningCount === 0;
+    dom.railDataNotice.classList.toggle("is-warning", warningCount > 0);
+    dom.railDataNoticeText.textContent = warningCount > 0
+      ? `${warningCount} data warning${warningCount === 1 ? "" : "s"} · ${reason}`
       : "All source and coverage checks passed";
+    dom.railDataNotice.title = warningReasons.join(" · ") || "All source and coverage checks passed";
+    dom.railDataNotice.setAttribute("aria-expanded", "false");
   }
   healthElement.textContent = warningCount ? `${warningCount} warning${warningCount === 1 ? "" : "s"}` : "Healthy";
   healthElement.classList.toggle("rail-health-warning", warningCount > 0);
@@ -1142,12 +1158,14 @@ function renderFcfChart(model) {
     const driver = fcfSpline(date);
     return [date, driver > 0 ? driver / yieldValue : NaN];
   }));
+  // Higher FCF yields produce lower implied prices, so reverse the shared
+  // palette to keep the vertical color order consistent with PER/PSR.
+  const fcfBandColors = [...BAND_COLORS].reverse();
   for (let index = 0; index < paths.length - 1; index += 1) {
-    option.series.push(valuationAreaSeries(`${MODEL.yields[index] * 100}-${MODEL.yields[index + 1] * 100}% area`, paths[index + 1], paths[index], YIELD_COLORS[index + 1]));
+    option.series.push(valuationAreaSeries(`${MODEL.yields[index] * 100}-${MODEL.yields[index + 1] * 100}% area`, paths[index + 1], paths[index], fcfBandColors[index]));
   }
   option.series.push(actualPriceSeries(model));
   paths.forEach((path, index) => {
-    const isReference = index === 2;
     option.series.push({
       name: `${Math.round(MODEL.yields[index] * 100)}% yield`,
       type: "line",
@@ -1157,22 +1175,23 @@ function renderFcfChart(model) {
       smoothMonotone: "x",
       connectNulls: false,
       lineStyle: {
-        color: YIELD_COLORS[index],
-        width: isReference ? 1.7 : 1,
-        type: YIELD_LINE_TYPES[index],
-        opacity: isReference ? 1 : 0.78,
+        color: fcfBandColors[index],
+        width: 1.15,
+        type: "solid",
+        opacity: 0.88,
       },
-      itemStyle: { color: YIELD_COLORS[index] },
+      itemStyle: { color: fcfBandColors[index] },
       endLabel: {
-        show: false,
+        show: path.some(([, value]) => finite(value)),
         formatter: `${Math.round(MODEL.yields[index] * 100)}%`,
-        color: YIELD_COLORS[index],
-        fontSize: 11,
+        color: fcfBandColors[index],
+        fontSize: veryCompact ? 8 : compact ? 9 : 11,
+        fontWeight: 600,
         backgroundColor: "rgba(5,8,9,0.88)",
         padding: [2, 4],
       },
-      labelLayout: { moveOverlap: "shiftY" },
-      z: isReference ? 5 : 4,
+      labelLayout: { moveOverlap: "shiftY", hideOverlap: false },
+      z: 4,
     });
   });
   const scenarioStyles = {
@@ -1285,7 +1304,7 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
   const compact = window.innerWidth <= 760;
   const veryCompact = window.innerWidth <= 470;
   option.grid.left = veryCompact ? 50 : compact ? 62 : CHART_GRID.left;
-  option.grid.right = veryCompact ? 52 : compact ? 76 : 124;
+  option.grid.right = veryCompact ? 94 : compact ? 88 : 136;
   if (veryCompact) {
     option.yAxis.name = "";
     option.yAxis.axisLabel.formatter = (value) => formatCompactAxisPrice(value, model);
@@ -1317,12 +1336,15 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
         endLabel: {
           show: !compact || isMedian,
           formatter: `${isMedian ? "Median" : `P${[10, 25, 50, 75, 90][index]}`} ${calculation.levels[index].toFixed(1)}x`,
-          color: BAND_COLORS[index],
-          fontSize: 11,
-          backgroundColor: "rgba(5,8,9,0.9)",
-          padding: [2, 4],
+          color: isMedian ? "#f0f5f6" : BAND_COLORS[index],
+          fontSize: isMedian ? 12 : 10,
+          fontWeight: isMedian ? 750 : 520,
+          backgroundColor: isMedian ? "rgba(38,49,52,0.96)" : "rgba(5,8,9,0.88)",
+          borderColor: isMedian ? "rgba(220,228,230,0.34)" : "transparent",
+          borderWidth: isMedian ? 1 : 0,
+          padding: isMedian ? [3, 5] : [2, 4],
         },
-        labelLayout: { moveOverlap: "shiftY" },
+        labelLayout: { moveOverlap: "shiftY", hideOverlap: false },
         z: isMedian ? 4 : 3,
       });
     });
@@ -1330,7 +1352,22 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
   option.series.push(actualPriceSeries(model));
   option.series.push({
     name: "Today", type: "line", data: [],
-    markLine: { silent: true, symbol: "none", lineStyle: { color: "#fff", type: "dotted", opacity: 0.55 }, label: { show: false }, data: [{ xAxis: model.prices.at(-1).date }] },
+    markLine: {
+      silent: true,
+      symbol: "none",
+      lineStyle: { color: "#aeb8bb", type: "dotted", opacity: 0.55 },
+      data: [
+        {
+          xAxis: model.prices.at(-1).date,
+          label: { show: true, formatter: "Today", position: "insideStartTop", rotate: 0, color: "#aeb8bb", fontSize: 10, fontFamily: NUMERIC_FONT },
+        },
+        {
+          xAxis: addYears(model.prices.at(-1).date, 1),
+          lineStyle: { color: "#8fb4bf", type: "dashed", opacity: 0.72 },
+          label: { show: true, formatter: "1Y forward", position: "insideEndTop", rotate: 0, color: "#b6cbd1", fontSize: 10, fontFamily: NUMERIC_FONT },
+        },
+      ],
+    },
   });
   if (!calculation.levels.length) {
     option.graphic = [{ type: "text", left: "center", top: "middle", style: { text: `${name} bands: N/A\nFewer than 30 positive observations`, fill: "#aab4b7", font: "12px sans-serif", textAlign: "center", lineHeight: 20 } }];
@@ -1348,7 +1385,7 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
     setInsight(insightId, [
       [`Current ${name}`, formatMultiple(currentMultiple)],
       ["vs historical median", formatPercent(medianDifference, 1, true)],
-      [`Forward ${driverName}`, formatPercent(driverChange, 1, true)],
+      [`1Y forward ${driverName}`, formatPercent(driverChange, 1, true)],
     ]);
   } else {
     setInsight(insightId, [
@@ -1395,7 +1432,7 @@ function renderFundamentalsChart(model) {
   option.grid.left = veryCompact ? 48 : compact ? 60 : CHART_GRID.left;
   option.legend.show = false;
   option.grid.top = 36;
-  option.grid.right = veryCompact ? 48 : compact ? 62 : 132;
+  option.grid.right = veryCompact ? 104 : compact ? 116 : 136;
   if (veryCompact) {
     option.xAxis.splitNumber = 4;
     option.xAxis.axisLabel.formatter = (value) => String(new Date(value).getUTCFullYear());
@@ -1409,9 +1446,9 @@ function renderFundamentalsChart(model) {
   option.yAxis.minorSplitLine = { show: false };
   option.yAxis = [option.yAxis, {
     type: "value", name: "ROIC", position: "right", scale: true, splitNumber: 3,
-    nameTextStyle: { color: COLORS.roic, fontSize: 11 },
+    nameTextStyle: { color: COLORS.roic, fontSize: 12, fontWeight: 700 },
     axisLine: { show: true, lineStyle: { color: COLORS.roic } },
-    axisLabel: { color: COLORS.roic, formatter: (value) => `${Math.round(value)}%`, fontSize: 10, fontFamily: NUMERIC_FONT, hideOverlap: true },
+    axisLabel: { color: COLORS.roic, formatter: (value) => `${Math.round(value)}%`, fontSize: 11, fontFamily: NUMERIC_FONT, hideOverlap: true },
     splitLine: { show: false },
     minorTick: { show: false },
     minorSplitLine: { show: false },
@@ -1429,19 +1466,20 @@ function renderFundamentalsChart(model) {
     const latestValue = data.at(-1)?.[1];
     return {
       name, type: "line", data,
-      showSymbol: true, symbolSize: 5, smooth: 0.24,
-      lineStyle: { color, width: 1.5 }, itemStyle: { color },
+      showSymbol: true, symbolSize: 4, smooth: 0.24,
+      lineStyle: { color, width: 1.15, opacity: 0.68 }, itemStyle: { color, opacity: 0.82 },
       endLabel: {
-        show: !compact,
+        show: data.length > 0,
         formatter: `${name} ${formatNumber(latestValue, 0)}`,
         color,
-        fontSize: 11,
+        fontSize: veryCompact ? 8 : compact ? 9 : 11,
+        fontWeight: 600,
         distance: 8,
         align: "left",
         backgroundColor: "rgba(5,8,9,0.86)",
         padding: [2, 4],
       },
-      labelLayout: { moveOverlap: "shiftY" },
+      labelLayout: { moveOverlap: "shiftY", hideOverlap: false },
     };
   });
   const roicData = model.fundamentals
@@ -1451,19 +1489,20 @@ function renderFundamentalsChart(model) {
   option.series.push({
     name: "ROIC", type: "line", yAxisIndex: 1,
     data: roicData,
-    showSymbol: true, symbolSize: 5, smooth: 0.24,
-    lineStyle: { color: COLORS.roic, width: 1.5 }, itemStyle: { color: COLORS.roic },
+    showSymbol: true, symbolSize: 6, smooth: 0.24,
+    lineStyle: { color: COLORS.roic, width: 2.3, opacity: 1 }, itemStyle: { color: COLORS.roic },
     endLabel: {
-      show: !compact,
+      show: roicData.length > 0,
       formatter: `ROIC ${formatNumber(latestRoic, 1)}%`,
       color: COLORS.roic,
-      fontSize: 11,
+      fontSize: veryCompact ? 8 : compact ? 9 : 11,
+      fontWeight: 750,
       distance: 8,
       align: "left",
       backgroundColor: "rgba(5,8,9,0.86)",
       padding: [2, 4],
     },
-    labelLayout: { moveOverlap: "shiftY" },
+    labelLayout: { moveOverlap: "shiftY", hideOverlap: false },
   });
   setChart("fundamentals-chart", option, { model, priceChart: false, coordinateTooltip: false });
   const methodElement = document.querySelector("#fundamentals-method");
@@ -1473,8 +1512,8 @@ function renderFundamentalsChart(model) {
       : "Each series = first non-zero period · ROIC = right axis";
   }
   setInsight("fundamentals-insight", [
-    ["Indexed baseline", baselineDate || "Per-series fallback"],
     ["Latest ROIC", formatPercent(model.metrics.roic)],
+    ["Indexed baseline", baselineDate || "Per-series fallback"],
   ]);
   setCaption("fundamentals-caption", [
     ["Revenue/share CAGR", formatPercent(model.historicalCagrs.revenue)],
@@ -1637,8 +1676,7 @@ async function saveDashboardPng() {
           ignoreElements: (element) => element.id === "coordinate-tooltip"
             || element.classList?.contains("export-tools")
             || element.classList?.contains("worker-field")
-            || element.classList?.contains("rail-health-popover")
-            || element.matches?.(".chart-method > p"),
+            || element.classList?.contains("rail-health-popover"),
           onclone: (clonedDocument) => {
             [...clonedDocument.querySelectorAll("*")].forEach((element) => {
               if (clonedDocument.defaultView.getComputedStyle(element).backgroundImage === "none") return;
@@ -1955,12 +1993,26 @@ function installDashboardNavigation() {
       else link.removeAttribute("aria-current");
     });
   };
-  links.forEach((link) => link.addEventListener("click", () => setCurrentLink(link.getAttribute("href").slice(1))));
+  links.forEach((link) => link.addEventListener("click", () => {
+    const sectionId = link.getAttribute("href").slice(1);
+    setCurrentLink(sectionId);
+    if (sectionId === "methodology-section") document.querySelector("#methodology-section").open = true;
+  }));
 
   const diagnosticsLink = document.querySelector("#rail-diagnostics-link");
   diagnosticsLink?.addEventListener("click", () => {
     document.querySelector("#diagnostics-section").open = true;
     document.querySelector(".rail-health-details").open = false;
+  });
+
+  dom.railDataNotice?.addEventListener("click", () => {
+    if (!dom.railHealthDetails) return;
+    dom.railHealthDetails.open = true;
+    dom.railDataNotice.setAttribute("aria-expanded", "true");
+    dom.railHealthDetails.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+  dom.railHealthDetails?.addEventListener("toggle", () => {
+    dom.railDataNotice?.setAttribute("aria-expanded", String(dom.railHealthDetails.open));
   });
 
   const sectionByElement = new Map(links.map((link) => {
@@ -2025,7 +2077,28 @@ function installMobileDockBehavior() {
   scheduleMobileDockUpdate();
 }
 
-function renderDashboard(model, payload, responseStatus, elapsedMs) {
+function formatCacheDuration(milliseconds) {
+  const seconds = rawNumber(milliseconds) / 1000;
+  if (!finite(seconds) || seconds <= 0) return null;
+  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+  if (seconds % 60 === 0) return `${seconds / 60}m`;
+  return `${Math.round(seconds)}s`;
+}
+
+function workerCacheStatus(response, payload) {
+  const header = response?.headers?.get("X-Worker-Cache")?.toUpperCase();
+  if (header === "HIT") return "Worker cache hit";
+  if (header === "MISS") return "Worker cache miss";
+  if (header === "BYPASS") return "cache bypassed";
+  const plan = payload?.requestPlan;
+  const browserTtl = formatCacheDuration(plan?.browserCacheTtlMs);
+  const workerTtl = formatCacheDuration(plan?.stockCacheTtlMs);
+  return browserTtl && workerTtl
+    ? `cache ${browserTtl} browser / ${workerTtl} Worker`
+    : "cache status unavailable";
+}
+
+function renderDashboard(model, payload, responseStatus, elapsedMs, cacheStatus = "cache status unavailable") {
   dom.title.textContent = `${model.company} (${model.ticker})`;
   dom.marketSummary.textContent = `Market cap ${formatCompactMoney(model.marketCap, model.currency)} · ${model.prices.at(-1).date}`;
   dom.dashboard.hidden = false;
@@ -2050,6 +2123,7 @@ function renderDashboard(model, payload, responseStatus, elapsedMs) {
     ticker: model.ticker,
     httpStatus: responseStatus,
     elapsedMs,
+    cacheStatus,
     source: payload.source,
     requestPlan: payload.requestPlan,
     endpointSummary,
@@ -2092,6 +2166,22 @@ function setStatus(kind, message, elapsed = "") {
 }
 
 let loadingProgressTimers = [];
+let loadingDetailTimer = null;
+let loadingStartedAt = 0;
+let loadingDetailBase = "";
+
+function refreshLoadingDetail() {
+  if (!dom.loadingDetail) return;
+  const elapsed = loadingStartedAt > 0
+    ? ` · ${((performance.now() - loadingStartedAt) / 1000).toFixed(1)}s`
+    : "";
+  dom.loadingDetail.textContent = loadingDetailBase ? `${loadingDetailBase}${elapsed}` : "";
+}
+
+function setLoadingDetail(message) {
+  loadingDetailBase = message || "";
+  refreshLoadingDetail();
+}
 
 function setLoadingProgressState(state) {
   const stages = [...(dom.loadingProgress?.querySelectorAll("li") || [])];
@@ -2123,6 +2213,10 @@ function setLoadingProgressState(state) {
 function stopLoadingProgress(finalState = null) {
   loadingProgressTimers.forEach((timer) => clearTimeout(timer));
   loadingProgressTimers = [];
+  if (loadingDetailTimer) clearInterval(loadingDetailTimer);
+  loadingDetailTimer = null;
+  loadingStartedAt = 0;
+  refreshLoadingDetail();
   if (!dom.loadingProgress) return;
   if (!finalState) {
     dom.loadingProgress.hidden = true;
@@ -2138,6 +2232,9 @@ function stopLoadingProgress(finalState = null) {
 
 function startLoadingProgress() {
   stopLoadingProgress();
+  loadingStartedAt = performance.now();
+  setLoadingDetail("Waiting on Worker · 3 Yahoo endpoints");
+  loadingDetailTimer = setInterval(refreshLoadingDetail, 250);
   if (!dom.loadingProgress) return;
   dom.loadingProgress.hidden = false;
   setLoadingProgressState("fetching");
@@ -2165,6 +2262,7 @@ async function analyze(event) {
     const endpoint = `${workerUrl}/api/stock?symbol=${encodeURIComponent(ticker)}`;
     setExportStatus("");
     setLoading(true);
+    setLoadingDetail("Waiting on Worker · 3 Yahoo endpoints · cache eligible");
     setStatus("loading", `${ticker}: Fetching Yahoo data through the Worker…`);
     const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
     setLoadingProgressState("processing");
@@ -2175,14 +2273,18 @@ async function analyze(event) {
       throw new Error(`Worker returned non-JSON data (HTTP ${response.status}).`);
     }
     if (!payload?.data) throw new Error(payload?.error || `Invalid Worker response (HTTP ${response.status}).`);
+    const endpointCount = Object.keys(payload.data).length;
+    setLoadingDetail(`Worker response received · ${endpointCount} endpoints · building model`);
+    const cacheStatus = workerCacheStatus(response, payload);
     const model = buildDashboardModel(payload, ticker);
     const elapsed = performance.now() - started;
-    renderDashboard(model, payload, response.status, Math.round(elapsed));
+    renderDashboard(model, payload, response.status, Math.round(elapsed), cacheStatus);
     dom.workerSettings.open = false;
     const failed = Object.entries(payload.data).filter(([, item]) => !item.ok).map(([name, item]) =>
       `${name}${item.status ? ` HTTP ${item.status}` : ""}`
     );
     completionState = failed.length ? "review" : "ready";
+    setLoadingDetail(`${endpointCount} endpoints received · ${cacheStatus} · model rendered`);
     const quoteAuth = payload.data.quote?.auth;
     if (failed.length) {
       setStatus("warning", `${ticker}: Dashboard ready · Some endpoints failed (${failed.join(", ")})`, `${(elapsed / 1000).toFixed(1)}s`);
@@ -2195,6 +2297,7 @@ async function analyze(event) {
     history.replaceState(null, "", `${location.pathname}?ticker=${encodeURIComponent(ticker)}&worker=${encodeURIComponent(workerUrl)}`);
   } catch (error) {
     const elapsed = performance.now() - started;
+    setLoadingDetail("Worker request failed · no model update");
     setStatus("error", error instanceof Error ? error.message : String(error), `${(elapsed / 1000).toFixed(1)}s`);
     dom.diagnostic.textContent = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);
   } finally {
