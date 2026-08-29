@@ -53,6 +53,12 @@ const dom = {
   statusText: document.querySelector("#status-text"),
   elapsed: document.querySelector("#elapsed-text"),
   loadingProgress: document.querySelector("#loading-progress"),
+  mobileIdentityTicker: document.querySelector("#mobile-identity-ticker"),
+  mobileIdentityPrice: document.querySelector("#mobile-identity-price"),
+  fcfScenarioRail: document.querySelector("#fcf-scenario-rail"),
+  savePngButton: document.querySelector("#save-png-button"),
+  saveHtmlButton: document.querySelector("#save-html-button"),
+  exportStatus: document.querySelector("#export-status"),
   title: document.querySelector("#company-title"),
   marketSummary: document.querySelector("#market-summary"),
   dashboard: document.querySelector("#dashboard"),
@@ -791,6 +797,79 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
   };
 }
 
+function renderFcfScenarioRail(model) {
+  const rail = dom.fcfScenarioRail;
+  const chart = chartInstances.get("fcf-chart");
+  if (!rail || !chart) return;
+
+  const entries = ["Bear", "Base", "Bull"].map((name) => ({
+      key: name.toLowerCase(),
+      label: name,
+      compactLabel: name,
+      color: { Bear: "#d77d70", Base: "#dce4e6", Bull: "#78b69f" }[name],
+      value: model.scenarios[name]?.targetPrice,
+      detail: model.scenarios[name]?.totalReturn,
+      targetPrice: model.scenarios[name]?.targetPrice,
+    })).filter((entry) => finite(entry.value));
+
+  rail.replaceChildren(...entries.map((entry) => {
+    const item = document.createElement("span");
+    item.className = `fcf-scenario-item fcf-scenario-${entry.key}`;
+    item.dataset.value = String(entry.value);
+    item.style.setProperty("--scenario-color", entry.color);
+    const name = document.createElement("span");
+    name.className = "fcf-scenario-name";
+    const fullLabel = document.createElement("span");
+    fullLabel.className = "fcf-scenario-label-full";
+    fullLabel.textContent = entry.label;
+    const compactLabel = document.createElement("span");
+    compactLabel.className = "fcf-scenario-label-compact";
+    compactLabel.textContent = entry.compactLabel;
+    name.append(fullLabel, compactLabel);
+    const value = document.createElement("strong");
+    value.textContent = formatPercent(entry.detail, 1, true);
+    item.append(name, value);
+    item.title = `${entry.label}: ${formatMoney(entry.targetPrice, model.currency)} (${formatPercent(entry.detail, 1, true)})`;
+    return item;
+  }));
+
+  const positionLabels = () => {
+    const height = chart.getHeight();
+    const items = [...rail.querySelectorAll(".fcf-scenario-item")].map((item) => {
+      const value = rawNumber(item.dataset.value);
+      const pixel = chart.convertToPixel({ yAxisIndex: 0 }, value);
+      const desired = Array.isArray(pixel) ? rawNumber(pixel.at(-1)) : rawNumber(pixel);
+      return { item, desired };
+    }).filter(({ desired }) => finite(desired));
+    items.sort((left, right) => left.desired - right.desired);
+    const minY = 13;
+    const maxY = Math.max(minY, height - 13);
+    const gap = window.innerWidth <= 470 ? 19 : 22;
+    const positions = [];
+    for (const entry of items) {
+      const previous = positions.at(-1);
+      positions.push(Math.max(minY, entry.desired, previous == null ? minY : previous + gap));
+    }
+    const overflow = (positions.at(-1) || 0) - maxY;
+    if (overflow > 0) {
+      for (let index = 0; index < positions.length; index += 1) positions[index] -= overflow;
+    }
+    items.forEach(({ item }, index) => {
+      item.style.top = `${clamp(positions[index], minY, maxY)}px`;
+    });
+  };
+
+  if (chart.__fcfScenarioPositioner) chart.off("finished", chart.__fcfScenarioPositioner);
+  chart.__fcfScenarioPositioner = positionLabels;
+  chart.on("finished", positionLabels);
+  rail.__fcfResizeObserver?.disconnect();
+  if (typeof window.ResizeObserver === "function") {
+    rail.__fcfResizeObserver = new window.ResizeObserver(positionLabels);
+    rail.__fcfResizeObserver.observe(chart.getDom());
+  }
+  requestAnimationFrame(positionLabels);
+}
+
 function actualPriceSeries(model) {
   return {
     name: "Actual price",
@@ -850,25 +929,25 @@ function formatRailReturn(value) {
   return finite(value) ? formatPercent(value, 1, true) : "N/A";
 }
 
-function setValuationVerdict(model, warningCount = 0) {
+function setValuationVerdict(model) {
   const element = document.querySelector("#rail-verdict");
   if (!element) return;
   const baseReturn = model.scenarios.Base?.totalReturn;
   const baseIrr = model.baseImpliedIrr;
   const returnMessage = !finite(baseReturn)
-    ? "Base-case 1Y return unavailable"
+    ? "Model base-case 1Y output unavailable"
     : baseReturn >= 0.15
-      ? "Base case shows material 1Y upside"
+      ? "Model base case suggests material 1Y upside"
       : baseReturn >= 0.05
-        ? "Base case shows moderate 1Y upside"
+        ? "Model base case suggests moderate 1Y upside"
         : baseReturn >= 0
-          ? "Base case shows limited 1Y upside"
-          : "Base case shows 1Y downside";
+          ? "Model base case suggests limited 1Y upside"
+          : "Model base case suggests 1Y downside";
   const irrMessage = !finite(baseIrr)
-    ? "10Y IRR unavailable"
+    ? "Modelled 10Y IRR unavailable"
     : baseIrr >= MODEL.requiredReturn
-      ? `10Y IRR clears the ${formatPercent(MODEL.requiredReturn, 0)} model hurdle`
-      : `10Y IRR is below the ${formatPercent(MODEL.requiredReturn, 0)} model hurdle`;
+      ? `Modelled 10Y IRR clears the ${formatPercent(MODEL.requiredReturn, 0)} hurdle`
+      : `Modelled 10Y IRR is below the ${formatPercent(MODEL.requiredReturn, 0)} hurdle`;
   const positive = finite(baseReturn) && baseReturn >= 0.05 && finite(baseIrr) && baseIrr >= MODEL.requiredReturn;
   const negative = finite(baseReturn) && baseReturn < 0 && finite(baseIrr) && baseIrr < MODEL.requiredReturn;
   element.className = `rail-verdict ${positive ? "verdict-positive" : negative ? "verdict-negative" : "verdict-caution"}`;
@@ -876,12 +955,6 @@ function setValuationVerdict(model, warningCount = 0) {
   verdictCopy.className = "rail-verdict-copy";
   verdictCopy.textContent = `${returnMessage} · ${irrMessage}`;
   element.replaceChildren(verdictCopy);
-  if (warningCount > 0) {
-    const qualifier = document.createElement("span");
-    qualifier.className = "rail-verdict-qualifier";
-    qualifier.textContent = `Qualified by ${warningCount} data warning${warningCount === 1 ? "" : "s"}`;
-    element.append(qualifier);
-  }
 }
 
 function adaptiveReturnRail(values) {
@@ -949,16 +1022,28 @@ function renderValuationRail(model, payload) {
   const successfulEndpoints = endpoints.filter((item) => item?.ok).length;
   const totalEndpoints = endpoints.length;
 
+  const formattedPrice = formatMoney(model.currentPrice, model.currency);
   document.querySelector("#rail-context").textContent = model.ticker;
-  document.querySelector("#rail-current-price").textContent = formatMoney(model.currentPrice, model.currency);
+  document.querySelector("#rail-current-price").textContent = formattedPrice;
   document.querySelector("#rail-current-yield").textContent = formatPercent(currentYield);
   document.querySelector("#rail-base-irr").textContent = formatPercent(model.baseImpliedIrr);
+  if (dom.mobileIdentityTicker) dom.mobileIdentityTicker.textContent = model.ticker;
+  if (dom.mobileIdentityPrice) dom.mobileIdentityPrice.textContent = formattedPrice;
   const coverageChecks = dataCoverageChecks(model);
   const healthElement = document.querySelector("#rail-data-health");
   const failedEndpoints = endpointEntries.filter(([, item]) => !item?.ok);
   const coverageWarnings = coverageChecks.filter((item) => !item.ok);
   const warningCount = failedEndpoints.length + coverageWarnings.length + (totalEndpoints ? 0 : 1);
-  setValuationVerdict(model, warningCount);
+  setValuationVerdict(model);
+  const dataNotice = document.querySelector("#rail-data-notice");
+  const dataNoticeText = document.querySelector("#rail-data-notice-text");
+  if (dataNotice && dataNoticeText) {
+    dataNotice.hidden = warningCount === 0;
+    dataNotice.classList.toggle("is-warning", warningCount > 0);
+    dataNoticeText.textContent = warningCount > 0
+      ? `${warningCount} data warning${warningCount === 1 ? "" : "s"} · review before using model output`
+      : "All source and coverage checks passed";
+  }
   healthElement.textContent = warningCount ? `${warningCount} warning${warningCount === 1 ? "" : "s"}` : "Healthy";
   healthElement.classList.toggle("rail-health-warning", warningCount > 0);
   document.querySelector("#rail-health-summary").textContent = warningCount
@@ -1034,7 +1119,7 @@ function renderFcfChart(model) {
   const compact = window.innerWidth <= 760;
   const veryCompact = window.innerWidth <= 470;
   option.grid.left = veryCompact ? 50 : compact ? 62 : CHART_GRID.left;
-  option.grid.right = veryCompact ? 58 : compact ? 92 : 164;
+  option.grid.right = veryCompact ? 86 : compact ? 96 : 118;
   if (veryCompact) {
     option.yAxis.name = "";
     option.yAxis.axisLabel.formatter = (value) => formatCompactAxisPrice(value, model);
@@ -1079,8 +1164,8 @@ function renderFcfChart(model) {
       },
       itemStyle: { color: YIELD_COLORS[index] },
       endLabel: {
-        show: !compact || isReference,
-        formatter: isReference ? "5% reference" : `${Math.round(MODEL.yields[index] * 100)}%`,
+        show: false,
+        formatter: `${Math.round(MODEL.yields[index] * 100)}%`,
         color: YIELD_COLORS[index],
         fontSize: 11,
         backgroundColor: "rgba(5,8,9,0.88)",
@@ -1110,7 +1195,7 @@ function renderFcfChart(model) {
       lineStyle: { color: scenarioStyle.color, width: name === "Base" ? 1.5 : 1.2, type: scenarioStyle.type, opacity: scenarioStyle.opacity },
       itemStyle: { color: scenarioStyle.color },
       endLabel: {
-        show: true,
+        show: false,
         formatter: veryCompact ? name : `${name} ${formatPercent(scenario.totalReturn, 1, true)}`,
         color: scenarioStyle.color,
         fontSize: veryCompact ? 9 : 11,
@@ -1128,11 +1213,9 @@ function renderFcfChart(model) {
     markLine: { silent: true, symbol: "none", lineStyle: { color: "#ffffff", type: "dotted", opacity: 0.55 }, label: { show: false }, data: [{ xAxis: currentDate }] },
   });
   setChart("fcf-chart", option, { model, priceChart: true, coordinateTooltip: true });
-  const currentYield = safeDivide(model.adjustedFcf, model.marketCap);
-  const yieldDifference = finite(currentYield) ? (currentYield - 0.05) * 100 : NaN;
+  renderFcfScenarioRail(model);
   const baseReturn = model.scenarios.Base?.totalReturn;
   setInsight("fcf-insight", [
-    ["vs 5% reference", finite(yieldDifference) ? `${yieldDifference >= 0 ? "+" : ""}${yieldDifference.toFixed(1)}pp` : "N/A"],
     ["Base 1Y return", formatPercent(baseReturn, 1, true)],
   ]);
   setCaption("fcf-caption", [
@@ -1411,6 +1494,258 @@ function setCaption(id, entries) {
     const safeValue = escapeHtml(value);
     return `<span class="caption-metric" title="${safeLabel}: ${safeValue}"><span class="caption-label">${safeLabel}</span><strong>${safeValue}</strong></span>`;
   }).join("");
+}
+
+let html2CanvasPromise = null;
+let exportStatusTimer = null;
+let exportBusy = false;
+
+function setExportStatus(message, state = "") {
+  if (!dom.exportStatus) return;
+  if (exportStatusTimer) {
+    clearTimeout(exportStatusTimer);
+    exportStatusTimer = null;
+  }
+  dom.exportStatus.textContent = message;
+  if (state) dom.exportStatus.dataset.state = state;
+  else delete dom.exportStatus.dataset.state;
+  if (message && state === "success") {
+    exportStatusTimer = setTimeout(() => setExportStatus(""), 5000);
+  }
+}
+
+function updateExportButtonState() {
+  const disabled = exportBusy || dom.button?.classList.contains("loading");
+  [dom.savePngButton, dom.saveHtmlButton].forEach((button) => {
+    if (!button) return;
+    button.disabled = disabled;
+    button.setAttribute("aria-busy", String(exportBusy));
+  });
+}
+
+function setExportBusy(busy) {
+  exportBusy = busy;
+  updateExportButtonState();
+}
+
+function loadHtml2Canvas() {
+  if (typeof window.html2canvas === "function") return Promise.resolve(window.html2canvas);
+  if (html2CanvasPromise) return html2CanvasPromise;
+  html2CanvasPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    script.async = true;
+    script.dataset.exportLibrary = "html2canvas";
+    script.onload = () => typeof window.html2canvas === "function"
+      ? resolve(window.html2canvas)
+      : reject(new Error("PNG export library did not load."));
+    script.onerror = () => reject(new Error("PNG export library could not be loaded."));
+    document.head.append(script);
+  });
+  return html2CanvasPromise;
+}
+
+function exportFileStem() {
+  const ticker = (dom.ticker?.value || "dashboard").trim().toUpperCase()
+    .replace(/[^A-Z0-9.^=-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "dashboard";
+  const now = new Date();
+  const date = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+    .map((part) => String(part).padStart(2, "0"))
+    .join("");
+  return `${ticker}-dashboard-${date}`;
+}
+
+function downloadBlob(blob, filename) {
+  if (!(blob instanceof Blob)) throw new Error("Export did not produce a file.");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function canvasToBlob(canvas) {
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+function replaceDashboardCanvasesWithImages() {
+  const replacements = [...document.querySelectorAll("canvas")].map((canvas) => {
+    const image = document.createElement("img");
+    [...canvas.attributes].forEach((attribute) => image.setAttribute(attribute.name, attribute.value));
+    image.style.cssText = canvas.style.cssText;
+    image.alt = canvas.closest("[aria-label]")?.getAttribute("aria-label") || "Chart";
+    image.src = canvas.toDataURL("image/png");
+    canvas.replaceWith(image);
+    return { canvas, image };
+  });
+  return () => replacements.forEach(({ canvas, image }) => image.replaceWith(canvas));
+}
+
+async function withExportLayout(callback) {
+  const body = document.body;
+  const previous = {
+    exporting: body.classList.contains("is-exporting"),
+    condensed: body.classList.contains("mobile-dock-condensed"),
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+  };
+  const details = [...document.querySelectorAll("details")];
+  const detailStates = details.map((detailsElement) => detailsElement.open);
+  body.classList.add("is-exporting");
+  body.classList.remove("mobile-dock-condensed");
+  details.forEach((detailsElement) => { detailsElement.open = false; });
+  window.scrollTo(0, 0);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  try {
+    return await callback();
+  } finally {
+    body.classList.toggle("is-exporting", previous.exporting);
+    body.classList.toggle("mobile-dock-condensed", previous.condensed);
+    details.forEach((detailsElement, index) => { detailsElement.open = detailStates[index]; });
+    window.scrollTo(previous.scrollX, previous.scrollY);
+    scheduleMobileDockUpdate();
+  }
+}
+
+async function saveDashboardPng() {
+  if (!document.body.classList.contains("dashboard-ready")) return;
+  setExportBusy(true);
+  setExportStatus("Preparing PNG…", "loading");
+  try {
+    const html2canvas = await loadHtml2Canvas();
+    const blob = await withExportLayout(async () => {
+      const width = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
+      const height = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+      const restoreCharts = replaceDashboardCanvasesWithImages();
+      try {
+        const canvas = await html2canvas(document.body, {
+          backgroundColor: "#050708",
+          logging: false,
+          useCORS: true,
+          scale: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
+          width,
+          height,
+          windowWidth: document.documentElement.clientWidth,
+          windowHeight: document.documentElement.clientHeight,
+          scrollX: 0,
+          scrollY: 0,
+          ignoreElements: (element) => element.id === "coordinate-tooltip"
+            || element.classList?.contains("export-tools")
+            || element.classList?.contains("worker-field")
+            || element.classList?.contains("rail-health-popover")
+            || element.matches?.(".chart-method > p"),
+          onclone: (clonedDocument) => {
+            [...clonedDocument.querySelectorAll("*")].forEach((element) => {
+              if (clonedDocument.defaultView.getComputedStyle(element).backgroundImage === "none") return;
+              element.style.setProperty("background-image", "none", "important");
+              if (element.classList.contains("fcf-scenario-rail")) element.style.backgroundColor = "rgba(8, 13, 15, 0.84)";
+              if (element.classList.contains("valuation-track-line")) element.style.backgroundColor = "#829095";
+            });
+          },
+        });
+        return canvasToBlob(canvas);
+      } finally {
+        restoreCharts();
+      }
+    });
+    const filename = `${exportFileStem()}.png`;
+    downloadBlob(blob, filename);
+    setExportStatus(`Downloaded ${filename}`, "success");
+  } catch (error) {
+    console.error("PNG export failed", error);
+    setExportStatus(error instanceof Error ? error.message : "PNG export failed.", "error");
+  } finally {
+    setExportBusy(false);
+  }
+}
+
+async function snapshotStylesheet() {
+  const links = [...document.querySelectorAll('link[rel="stylesheet"]')];
+  const fetched = [];
+  for (const link of links) {
+    try {
+      const response = await fetch(link.href, { cache: "no-store" });
+      if (response.ok) fetched.push(await response.text());
+    } catch {
+      // Fall back to CSSOM below for file:// pages or restricted origins.
+    }
+  }
+  if (fetched.length) return fetched.join("\n");
+  return [...document.styleSheets].flatMap((sheet) => {
+    try {
+      return [...sheet.cssRules].map((rule) => rule.cssText);
+    } catch {
+      return [];
+    }
+  }).join("\n");
+}
+
+async function createDashboardSnapshot() {
+  const stylesheet = await snapshotStylesheet();
+  const sourceCanvases = [...document.querySelectorAll("canvas")];
+  const snapshot = document.documentElement.cloneNode(true);
+  const snapshotCanvases = [...snapshot.querySelectorAll("canvas")];
+  snapshotCanvases.forEach((canvas, index) => {
+    const image = document.createElement("img");
+    [...canvas.attributes].forEach((attribute) => image.setAttribute(attribute.name, attribute.value));
+    try {
+      image.src = sourceCanvases[index]?.toDataURL("image/png") || "";
+    } catch {
+      image.alt = "Chart image unavailable";
+    }
+    image.alt ||= canvas.closest("[aria-label]")?.getAttribute("aria-label") || "Chart";
+    image.style.display = "block";
+    canvas.replaceWith(image);
+  });
+
+  const sourceControls = [...document.querySelectorAll("input, textarea, select")];
+  const snapshotControls = [...snapshot.querySelectorAll("input, textarea, select")];
+  snapshotControls.forEach((control, index) => {
+    const source = sourceControls[index];
+    if (!source) return;
+    if (control instanceof HTMLSelectElement) {
+      [...control.options].forEach((option, optionIndex) => option.toggleAttribute("selected", optionIndex === source.selectedIndex));
+    } else if (control.type === "checkbox" || control.type === "radio") {
+      control.toggleAttribute("checked", source.checked);
+    } else {
+      control.setAttribute("value", source.value);
+    }
+  });
+
+  const sourceDetails = [...document.querySelectorAll("details")];
+  const snapshotDetails = [...snapshot.querySelectorAll("details")];
+  snapshotDetails.forEach((details, index) => details.toggleAttribute("open", Boolean(sourceDetails[index]?.open)));
+  snapshot.querySelectorAll("script, link[rel=\"stylesheet\"], .export-tools, #coordinate-tooltip, .worker-field, .rail-health-popover").forEach((element) => element.remove());
+  snapshot.querySelector("body")?.classList.remove("is-exporting");
+  const inlineStyle = document.createElement("style");
+  inlineStyle.setAttribute("data-snapshot-source", "style.css");
+  inlineStyle.textContent = stylesheet;
+  snapshot.querySelector("head")?.append(inlineStyle);
+  const title = snapshot.querySelector("title");
+  if (title) title.textContent = `${document.title} — static render`;
+  return `<!doctype html>\n${snapshot.outerHTML}`;
+}
+
+async function saveDashboardHtml() {
+  if (!document.body.classList.contains("dashboard-ready")) return;
+  setExportBusy(true);
+  setExportStatus("Preparing HTML…", "loading");
+  try {
+    const html = await withExportLayout(() => createDashboardSnapshot());
+    const filename = `${exportFileStem()}.html`;
+    downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), filename);
+    setExportStatus(`Downloaded ${filename}`, "success");
+  } catch (error) {
+    console.error("HTML export failed", error);
+    setExportStatus(error instanceof Error ? error.message : "HTML export failed.", "error");
+  } finally {
+    setExportBusy(false);
+  }
 }
 
 function renderMetrics(model) {
@@ -1758,56 +2093,81 @@ function setStatus(kind, message, elapsed = "") {
 
 let loadingProgressTimers = [];
 
-function setLoadingProgressStage(activeIndex) {
+function setLoadingProgressState(state) {
   const stages = [...(dom.loadingProgress?.querySelectorAll("li") || [])];
+  const states = {
+    fetching: ["Fetching", "Queued", "Queued"],
+    processing: ["Ready", "Processing", "Queued"],
+    ready: ["Ready", "Ready", "Ready"],
+    review: ["Review", "Not run", "Not run"],
+    idle: ["Queued", "Queued", "Queued"],
+  }[state] || ["Queued", "Queued", "Queued"];
   stages.forEach((stage, index) => {
-    stage.classList.toggle("active", index === activeIndex);
-    stage.classList.toggle("passed", index < activeIndex);
-    if (index === activeIndex) stage.setAttribute("aria-current", "step");
+    const stateElement = stage.querySelector(".loading-step-state");
+    const stepState = states[index] || "Queued";
+    const active = state === "fetching" && index === 0
+      || state === "processing" && index === 1;
+    const ready = state === "processing" && index === 0
+      || state === "ready";
+    const review = state === "review" && index === 0;
+    stage.classList.toggle("active", active);
+    stage.classList.toggle("ready", ready);
+    stage.classList.toggle("review", review);
+    stage.classList.toggle("queued", !active && !ready && !review);
+    if (stateElement) stateElement.textContent = stepState;
+    if (active) stage.setAttribute("aria-current", "step");
     else stage.removeAttribute("aria-current");
   });
 }
 
-function stopLoadingProgress() {
+function stopLoadingProgress(finalState = null) {
   loadingProgressTimers.forEach((timer) => clearTimeout(timer));
   loadingProgressTimers = [];
   if (!dom.loadingProgress) return;
-  dom.loadingProgress.hidden = true;
-  setLoadingProgressStage(-1);
+  if (!finalState) {
+    dom.loadingProgress.hidden = true;
+    setLoadingProgressState("idle");
+    return;
+  }
+  setLoadingProgressState(finalState);
+  loadingProgressTimers = [setTimeout(() => {
+    dom.loadingProgress.hidden = true;
+    setLoadingProgressState("idle");
+  }, 480)];
 }
 
 function startLoadingProgress() {
   stopLoadingProgress();
   if (!dom.loadingProgress) return;
-  setLoadingProgressStage(0);
-  loadingProgressTimers = [
-    setTimeout(() => { dom.loadingProgress.hidden = false; }, 250),
-    setTimeout(() => setLoadingProgressStage(1), 2600),
-    setTimeout(() => setLoadingProgressStage(2), 5200),
-  ];
+  dom.loadingProgress.hidden = false;
+  setLoadingProgressState("fetching");
 }
 
-function setLoading(loading) {
+function setLoading(loading, completionState = null) {
   dom.button.disabled = loading;
   dom.button.classList.toggle("loading", loading);
   dom.ticker.disabled = loading;
   dom.workerUrl.disabled = loading;
+  updateExportButtonState();
   if (loading) startLoadingProgress();
-  else stopLoadingProgress();
+  else stopLoadingProgress(completionState);
   scheduleMobileDockUpdate();
 }
 
 async function analyze(event) {
   event.preventDefault();
   const started = performance.now();
+  let completionState = "review";
   try {
     const ticker = tickerValue(dom.ticker.value);
     const workerUrl = normalizeWorkerUrl(dom.workerUrl.value);
     localStorage.setItem("stockDashboardWorkerUrl", workerUrl);
     const endpoint = `${workerUrl}/api/stock?symbol=${encodeURIComponent(ticker)}`;
+    setExportStatus("");
     setLoading(true);
     setStatus("loading", `${ticker}: Fetching Yahoo data through the Worker…`);
     const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
+    setLoadingProgressState("processing");
     let payload;
     try {
       payload = await response.json();
@@ -1822,6 +2182,7 @@ async function analyze(event) {
     const failed = Object.entries(payload.data).filter(([, item]) => !item.ok).map(([name, item]) =>
       `${name}${item.status ? ` HTTP ${item.status}` : ""}`
     );
+    completionState = failed.length ? "review" : "ready";
     const quoteAuth = payload.data.quote?.auth;
     if (failed.length) {
       setStatus("warning", `${ticker}: Dashboard ready · Some endpoints failed (${failed.join(", ")})`, `${(elapsed / 1000).toFixed(1)}s`);
@@ -1837,7 +2198,7 @@ async function analyze(event) {
     setStatus("error", error instanceof Error ? error.message : String(error), `${(elapsed / 1000).toFixed(1)}s`);
     dom.diagnostic.textContent = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);
   } finally {
-    setLoading(false);
+    setLoading(false, completionState);
   }
 }
 
@@ -1861,5 +2222,7 @@ window.addEventListener("resize", () => {
 });
 dom.form.addEventListener("submit", analyze);
 dom.ticker.addEventListener("input", () => { dom.ticker.value = dom.ticker.value.toUpperCase(); });
+dom.savePngButton?.addEventListener("click", saveDashboardPng);
+dom.saveHtmlButton?.addEventListener("click", saveDashboardHtml);
 installMobileDockBehavior();
 initializeInputs();

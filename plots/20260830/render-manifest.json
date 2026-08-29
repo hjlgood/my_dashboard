@@ -1,0 +1,10 @@
+{
+  "ticker": "ADBE",
+  "status": "ADBE: dashboard ready",
+  "output": [
+    "/mnt/source/python/stock/my_dashboard/plots/20260830/adbe-dashboard-desktop.png",
+    "/mnt/source/python/stock/my_dashboard/plots/20260830/adbe-dashboard-desktop.html",
+    "/mnt/source/python/stock/my_dashboard/plots/20260830/adbe-dashboard-mobile.png",
+    "/mnt/source/python/stock/my_dashboard/plots/20260830/adbe-dashboard-mobile.html"
+  ]
+}

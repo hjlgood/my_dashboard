@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260829-3">
+  <link rel="stylesheet" href="style.css?v=20260830-2">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script src="main.js?v=20260829-4" defer></script>
+  <script src="main.js?v=20260830-2" defer></script>
 </head>
 <body>
   <div class="page-shell">
@@ -66,19 +66,51 @@
           <span id="elapsed-text" class="elapsed-text"></span>
         </div>
         <ol id="loading-progress" class="loading-progress" aria-label="Analysis loading stages" aria-live="polite" hidden>
-          <li>Price history</li>
-          <li>Fundamentals</li>
-          <li>Estimates</li>
+          <li data-stage="fetch">
+            <span class="loading-step-name">
+              <span class="loading-step-name-full">Fetch data</span>
+              <span class="loading-step-name-compact">Fetch</span>
+            </span>
+            <span class="loading-step-state">Queued</span>
+          </li>
+          <li data-stage="model">
+            <span class="loading-step-name">
+              <span class="loading-step-name-full">Build model</span>
+              <span class="loading-step-name-compact">Model</span>
+            </span>
+            <span class="loading-step-state">Queued</span>
+          </li>
+          <li data-stage="render">
+            <span class="loading-step-name">
+              <span class="loading-step-name-full">Render charts</span>
+              <span class="loading-step-name-compact">Render</span>
+            </span>
+            <span class="loading-step-state">Queued</span>
+          </li>
         </ol>
       </section>
 
-      <nav class="section-nav" aria-label="Dashboard sections">
-        <a href="#fcf-section">01 FCF</a>
-        <a href="#per-section">02 PER</a>
-        <a href="#psr-section">03 PSR</a>
-        <a href="#quality-section">04 Quality</a>
-        <a href="#metrics-section">05 Metrics</a>
-      </nav>
+      <div id="mobile-identity" class="mobile-identity" aria-label="Current ticker and price">
+        <span id="mobile-identity-ticker">ADBE</span>
+        <span class="mobile-identity-separator" aria-hidden="true">·</span>
+        <strong id="mobile-identity-price">N/A</strong>
+      </div>
+
+      <div class="dashboard-tools">
+        <nav class="section-nav" aria-label="Dashboard sections">
+          <a href="#fcf-section">01 FCF</a>
+          <a href="#per-section">02 PER</a>
+          <a href="#psr-section">03 PSR</a>
+          <a href="#quality-section">04 Quality</a>
+          <a href="#metrics-section">05 Metrics</a>
+        </nav>
+        <div class="export-tools" aria-label="Export dashboard">
+          <span class="export-tools-label">Export</span>
+          <button id="save-png-button" class="export-button" type="button" aria-label="Save dashboard as PNG">Save PNG</button>
+          <button id="save-html-button" class="export-button" type="button" aria-label="Save dashboard as HTML">Save HTML</button>
+          <span id="export-status" class="export-status" role="status" aria-live="polite"></span>
+        </div>
+      </div>
     </div>
 
     <div id="coordinate-tooltip" class="coordinate-tooltip" role="tooltip" aria-hidden="true" hidden></div>
@@ -94,6 +126,14 @@
         </header>
 
         <div class="rail-body">
+          <div class="rail-readout-meta">
+            <span>Conditional model readout</span>
+            <span>Scenario output · not a forecast</span>
+          </div>
+          <div id="rail-data-notice" class="rail-data-notice" hidden>
+            <span class="rail-data-notice-dot" aria-hidden="true"></span>
+            <strong id="rail-data-notice-text"></strong>
+          </div>
           <p id="rail-verdict" class="rail-verdict">Awaiting valuation data.</p>
 
           <div class="rail-metrics" aria-label="Valuation snapshot metrics">
@@ -169,10 +209,13 @@
           </div>
           <details class="chart-method">
             <summary>Method</summary>
-            <p>Yield references: 3%, 4%, 5%, 6%, 8% · Bear red · Base white · Bull green</p>
+            <p>Yield bands: 3%, 4%, 5%, 6%, 8% · Bear red · Base white · Bull green</p>
           </details>
         </div>
-        <div id="fcf-chart" class="chart chart-tall" role="img" aria-label="FCF minus SBC yield bands"></div>
+        <div class="fcf-chart-frame">
+          <div id="fcf-chart" class="chart chart-tall" role="img" aria-label="FCF minus SBC yield bands"></div>
+          <aside id="fcf-scenario-rail" class="fcf-scenario-rail" aria-label="FCF chart endpoint labels"></aside>
+        </div>
         <div id="fcf-caption" class="chart-caption"></div>
       </section>
 
