@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260830-7">
+  <link rel="stylesheet" href="style.css?v=20260830-14">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script src="main.js?v=20260830-7" defer></script>
+  <script src="main.js?v=20260830-14" defer></script>
 </head>
 <body>
   <div class="page-shell">
@@ -66,29 +66,6 @@
           <span id="loading-detail" class="loading-detail" aria-live="polite"></span>
           <span id="elapsed-text" class="elapsed-text"></span>
         </div>
-        <ol id="loading-progress" class="loading-progress" aria-label="Analysis loading stages" aria-live="polite" hidden>
-          <li data-stage="fetch">
-            <span class="loading-step-name">
-              <span class="loading-step-name-full">Fetch data</span>
-              <span class="loading-step-name-compact">Fetch</span>
-            </span>
-            <span class="loading-step-state">Queued</span>
-          </li>
-          <li data-stage="model">
-            <span class="loading-step-name">
-              <span class="loading-step-name-full">Build model</span>
-              <span class="loading-step-name-compact">Model</span>
-            </span>
-            <span class="loading-step-state">Queued</span>
-          </li>
-          <li data-stage="render">
-            <span class="loading-step-name">
-              <span class="loading-step-name-full">Render charts</span>
-              <span class="loading-step-name-compact">Render</span>
-            </span>
-            <span class="loading-step-state">Queued</span>
-          </li>
-        </ol>
       </section>
 
       <div id="mobile-identity" class="mobile-identity" aria-label="Current ticker and price">
@@ -169,6 +146,7 @@
                 <strong id="rail-data-health">N/A</strong>
               </summary>
               <div class="rail-health-popover">
+                <button type="button" class="rail-health-close" aria-label="Close data health details">Close</button>
                 <p id="rail-health-summary">Endpoint and model coverage unavailable.</p>
                 <h3>Endpoint status</h3>
                 <ul id="rail-health-list"></ul>
@@ -213,7 +191,6 @@
         </div>
         <div class="fcf-chart-frame">
           <div id="fcf-chart" class="chart chart-tall" role="img" aria-label="FCF minus SBC yield bands"></div>
-          <aside id="fcf-scenario-rail" class="fcf-scenario-rail" aria-label="FCF chart endpoint labels"></aside>
         </div>
         <div id="fcf-caption" class="chart-caption"></div>
       </section>

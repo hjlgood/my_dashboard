@@ -51,10 +51,8 @@ const dom = {
   statusText: document.querySelector("#status-text"),
   elapsed: document.querySelector("#elapsed-text"),
   loadingDetail: document.querySelector("#loading-detail"),
-  loadingProgress: document.querySelector("#loading-progress"),
   mobileIdentityTicker: document.querySelector("#mobile-identity-ticker"),
   mobileIdentityPrice: document.querySelector("#mobile-identity-price"),
-  fcfScenarioRail: document.querySelector("#fcf-scenario-rail"),
   railDataNotice: document.querySelector("#rail-data-notice"),
   railDataNoticeText: document.querySelector("#rail-data-notice-text"),
   railHealthDetails: document.querySelector("#rail-health-details"),
@@ -397,6 +395,7 @@ function buildDashboardModel(payload, ticker) {
     forwardRevenueGrowth = analystRevenue / yearAgoRevenue - 1;
   }
   const analystEps = rawNumber(trend?.earningsEstimate?.avg);
+  const analystPriceTarget = rawNumber(quote?.financialData?.targetMeanPrice);
   const unboundedBase = finite(historicalBaseGrowth)
     ? (finite(forwardRevenueGrowth)
       ? historicalBaseGrowth * (1 - MODEL.forwardRevenueWeight) + forwardRevenueGrowth * MODEL.forwardRevenueWeight
@@ -483,7 +482,9 @@ function buildDashboardModel(payload, ticker) {
     ticker, company, currency, prices, meta, seriesMap, quote, fundamentals,
     currentPrice, currentShares, marketCap, revenue, fcf, sbc, sbcSource, adjustedFcf,
     currentAdjustedFcfPerShare, currentMultiple, historicalCagrs, historicalBaseGrowth,
-    analystRevenuePerShare, analystEps: analystEps > 0 ? analystEps : NaN,
+    analystRevenuePerShare,
+    analystEps: analystEps > 0 ? analystEps : NaN,
+    analystPriceTarget: analystPriceTarget > 0 ? analystPriceTarget : NaN,
     forwardRevenueGrowth, baseGrowth, growthScenarios, exitMultiples, scenarios,
     secondStageGrowth, baseTenYearCagr, reverseImpliedGrowth, baseImpliedIrr,
     metrics: {
@@ -688,6 +689,21 @@ function formatHoverTooltip(params, model, priceChart, chartId, coordinateToolti
   return `${date}<br/>${priceChart ? "Price" : "Value"}: ${valueText}`;
 }
 
+function endLabelAtLineInside(offsetX = 8) {
+  return (params) => {
+    const lineRect = params.rect || params.labelRect;
+    const labelRect = params.labelRect || { y: lineRect.y, height: 0 };
+    return {
+      x: lineRect.x + lineRect.width - offsetX,
+      y: labelRect.y + labelRect.height / 2,
+      align: "right",
+      verticalAlign: "middle",
+      moveOverlap: "shiftY",
+      hideOverlap: false,
+    };
+  };
+}
+
 function endLabelAtLineRight(offsetX = 8) {
   return (params) => {
     const lineRect = params.rect || params.labelRect;
@@ -799,79 +815,6 @@ function commonChartOption(model, yName, chartId = null, coordinateTooltip = fal
   };
 }
 
-function renderFcfScenarioRail(model) {
-  const rail = dom.fcfScenarioRail;
-  const chart = chartInstances.get("fcf-chart");
-  if (!rail || !chart) return;
-
-  const entries = ["Bear", "Base", "Bull"].map((name) => ({
-      key: name.toLowerCase(),
-      label: name,
-      compactLabel: name,
-      color: { Bear: "#d77d70", Base: "#dce4e6", Bull: "#78b69f" }[name],
-      value: model.scenarios[name]?.targetPrice,
-      detail: model.scenarios[name]?.totalReturn,
-      targetPrice: model.scenarios[name]?.targetPrice,
-    })).filter((entry) => finite(entry.value));
-
-  rail.replaceChildren(...entries.map((entry) => {
-    const item = document.createElement("span");
-    item.className = `fcf-scenario-item fcf-scenario-${entry.key}`;
-    item.dataset.value = String(entry.value);
-    item.style.setProperty("--scenario-color", entry.color);
-    const name = document.createElement("span");
-    name.className = "fcf-scenario-name";
-    const fullLabel = document.createElement("span");
-    fullLabel.className = "fcf-scenario-label-full";
-    fullLabel.textContent = entry.label;
-    const compactLabel = document.createElement("span");
-    compactLabel.className = "fcf-scenario-label-compact";
-    compactLabel.textContent = entry.compactLabel;
-    name.append(fullLabel, compactLabel);
-    const value = document.createElement("strong");
-    value.textContent = formatPercent(entry.detail, 1, true);
-    item.append(name, value);
-    item.title = `${entry.label}: ${formatMoney(entry.targetPrice, model.currency)} (${formatPercent(entry.detail, 1, true)})`;
-    return item;
-  }));
-
-  const positionLabels = () => {
-    const height = chart.getHeight();
-    const items = [...rail.querySelectorAll(".fcf-scenario-item")].map((item) => {
-      const value = rawNumber(item.dataset.value);
-      const pixel = chart.convertToPixel({ yAxisIndex: 0 }, value);
-      const desired = Array.isArray(pixel) ? rawNumber(pixel.at(-1)) : rawNumber(pixel);
-      return { item, desired };
-    }).filter(({ desired }) => finite(desired));
-    items.sort((left, right) => left.desired - right.desired);
-    const minY = 13;
-    const maxY = Math.max(minY, height - 13);
-    const gap = window.innerWidth <= 470 ? 19 : 22;
-    const positions = [];
-    for (const entry of items) {
-      const previous = positions.at(-1);
-      positions.push(Math.max(minY, entry.desired, previous == null ? minY : previous + gap));
-    }
-    const overflow = (positions.at(-1) || 0) - maxY;
-    if (overflow > 0) {
-      for (let index = 0; index < positions.length; index += 1) positions[index] -= overflow;
-    }
-    items.forEach(({ item }, index) => {
-      item.style.top = `${clamp(positions[index], minY, maxY)}px`;
-    });
-  };
-
-  if (chart.__fcfScenarioPositioner) chart.off("finished", chart.__fcfScenarioPositioner);
-  chart.__fcfScenarioPositioner = positionLabels;
-  chart.on("finished", positionLabels);
-  rail.__fcfResizeObserver?.disconnect();
-  if (typeof window.ResizeObserver === "function") {
-    rail.__fcfResizeObserver = new window.ResizeObserver(positionLabels);
-    rail.__fcfResizeObserver.observe(chart.getDom());
-  }
-  requestAnimationFrame(positionLabels);
-}
-
 function actualPriceSeries(model) {
   return {
     name: "Actual price",
@@ -890,18 +833,17 @@ function rgba(hex, alpha) {
   return `rgba(${(number >> 16) & 255},${(number >> 8) & 255},${number & 255},${alpha})`;
 }
 
-function bandAreaFill(color) {
+function bandAreaFill(topColor, bottomColor = topColor) {
   if (window.echarts?.graphic?.LinearGradient) {
     return new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
-      { offset: 0, color: rgba(color, 0.13) },
-      { offset: 0.5, color: rgba(color, 0.055) },
-      { offset: 1, color: rgba(color, 0.012) },
+      { offset: 0, color: rgba(topColor, 0.09) },
+      { offset: 1, color: rgba(bottomColor, 0.09) },
     ]);
   }
-  return rgba(color, 0.05);
+  return rgba(topColor, 0.09);
 }
 
-function valuationAreaSeries(name, lower, upper, color) {
+function valuationAreaSeries(name, lower, upper, topColor, bottomColor = topColor) {
   const rows = lower.map((item, index) => [item[0], item[1], upper[index]?.[1]]).filter((item) => finite(item[1]) && finite(item[2]));
   return {
     name,
@@ -917,7 +859,7 @@ function valuationAreaSeries(name, lower, upper, color) {
       const p2 = api.coord([api.value(0), api.value(2)]);
       const p3 = api.coord([next[0], next[2]]);
       const p4 = api.coord([next[0], next[1]]);
-      return { type: "polygon", shape: { points: [p1, p2, p3, p4] }, style: { fill: bandAreaFill(color), stroke: "none" } };
+      return { type: "polygon", shape: { points: [p1, p2, p3, p4] }, style: { fill: bandAreaFill(topColor, bottomColor), stroke: "none" } };
     },
     z: 0,
   };
@@ -1135,7 +1077,7 @@ function renderFcfChart(model) {
   const compact = window.innerWidth <= 760;
   const veryCompact = window.innerWidth <= 470;
   option.grid.left = veryCompact ? 50 : compact ? 62 : CHART_GRID.left;
-  option.grid.right = veryCompact ? 86 : compact ? 96 : 118;
+  option.grid.right = veryCompact ? 28 : compact ? 32 : 36;
   if (veryCompact) {
     option.yAxis.name = "";
     option.yAxis.axisLabel.formatter = (value) => formatCompactAxisPrice(value, model);
@@ -1162,7 +1104,13 @@ function renderFcfChart(model) {
   // palette to keep the vertical color order consistent with PER/PSR.
   const fcfBandColors = [...BAND_COLORS].reverse();
   for (let index = 0; index < paths.length - 1; index += 1) {
-    option.series.push(valuationAreaSeries(`${MODEL.yields[index] * 100}-${MODEL.yields[index + 1] * 100}% area`, paths[index + 1], paths[index], fcfBandColors[index]));
+    option.series.push(valuationAreaSeries(
+      `${MODEL.yields[index] * 100}-${MODEL.yields[index + 1] * 100}% area`,
+      paths[index + 1],
+      paths[index],
+      fcfBandColors[index],
+      fcfBandColors[index + 1],
+    ));
   }
   option.series.push(actualPriceSeries(model));
   paths.forEach((path, index) => {
@@ -1187,10 +1135,8 @@ function renderFcfChart(model) {
         color: fcfBandColors[index],
         fontSize: veryCompact ? 8 : compact ? 9 : 11,
         fontWeight: 600,
-        backgroundColor: "rgba(5,8,9,0.88)",
-        padding: [2, 4],
       },
-      labelLayout: { moveOverlap: "shiftY", hideOverlap: false },
+      labelLayout: endLabelAtLineRight(veryCompact ? 4 : compact ? 6 : 8),
       z: 4,
     });
   });
@@ -1214,14 +1160,13 @@ function renderFcfChart(model) {
       lineStyle: { color: scenarioStyle.color, width: name === "Base" ? 1.5 : 1.2, type: scenarioStyle.type, opacity: scenarioStyle.opacity },
       itemStyle: { color: scenarioStyle.color },
       endLabel: {
-        show: false,
+        show: finite(scenario.targetPrice),
         formatter: veryCompact ? name : `${name} ${formatPercent(scenario.totalReturn, 1, true)}`,
         color: scenarioStyle.color,
-        fontSize: veryCompact ? 9 : 11,
-        backgroundColor: "rgba(5,8,9,0.9)",
-        padding: [2, 4],
+        fontSize: veryCompact ? 8 : compact ? 9 : 11,
+        fontWeight: 600,
       },
-      labelLayout: endLabelAtLineRight(veryCompact ? 12 : compact ? 34 : 70),
+      labelLayout: endLabelAtLineInside(veryCompact ? 42 : compact ? 56 : 72),
       z: 2,
     });
   }
@@ -1232,14 +1177,13 @@ function renderFcfChart(model) {
     markLine: { silent: true, symbol: "none", lineStyle: { color: "#ffffff", type: "dotted", opacity: 0.55 }, label: { show: false }, data: [{ xAxis: currentDate }] },
   });
   setChart("fcf-chart", option, { model, priceChart: true, coordinateTooltip: true });
-  renderFcfScenarioRail(model);
   const baseReturn = model.scenarios.Base?.totalReturn;
   setInsight("fcf-insight", [
     ["Base 1Y return", formatPercent(baseReturn, 1, true)],
   ]);
   setCaption("fcf-caption", [
     ["Current FCF-SBC/share", formatMoney(model.currentAdjustedFcfPerShare, model.currency)],
-    ["Analyst +1Y Rev/share avg", `${formatMoney(model.analystRevenuePerShare, model.currency)} (${forwardChange(model.fundamentals.at(-1)?.revenuePerShare, model.analystRevenuePerShare)})`],
+    ["Analyst 1Y Price Target/share", `${formatMoney(model.analystPriceTarget, model.currency)} (${forwardChange(model.currentPrice, model.analystPriceTarget)})`],
   ]);
 }
 
@@ -1304,7 +1248,7 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
   const compact = window.innerWidth <= 760;
   const veryCompact = window.innerWidth <= 470;
   option.grid.left = veryCompact ? 50 : compact ? 62 : CHART_GRID.left;
-  option.grid.right = veryCompact ? 94 : compact ? 88 : 136;
+  option.grid.right = veryCompact ? 56 : compact ? 62 : 70;
   if (veryCompact) {
     option.yAxis.name = "";
     option.yAxis.axisLabel.formatter = (value) => formatCompactAxisPrice(value, model);
@@ -1314,7 +1258,13 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
   option.legend.show = false;
   if (calculation.levels.length === 5) {
     for (let index = 0; index < 4; index += 1) {
-      option.series.push(valuationAreaSeries(`${name} area`, calculation.paths[index], calculation.paths[index + 1], BAND_COLORS[index + 1]));
+      option.series.push(valuationAreaSeries(
+        `${name} area`,
+        calculation.paths[index],
+        calculation.paths[index + 1],
+        BAND_COLORS[index + 1],
+        BAND_COLORS[index],
+      ));
     }
     calculation.paths.forEach((path, index) => {
       const isMedian = index === 2;
@@ -1334,17 +1284,15 @@ function renderMultipleChart(model, elementId, captionId, field, name, analystDr
         },
         itemStyle: { color: BAND_COLORS[index] },
         endLabel: {
-          show: !compact || isMedian,
+          show: true,
           formatter: `${isMedian ? "Median" : `P${[10, 25, 50, 75, 90][index]}`} ${calculation.levels[index].toFixed(1)}x`,
           color: isMedian ? "#f0f5f6" : BAND_COLORS[index],
-          fontSize: isMedian ? 12 : 10,
-          fontWeight: isMedian ? 750 : 520,
-          backgroundColor: isMedian ? "rgba(38,49,52,0.96)" : "rgba(5,8,9,0.88)",
-          borderColor: isMedian ? "rgba(220,228,230,0.34)" : "transparent",
-          borderWidth: isMedian ? 1 : 0,
-          padding: isMedian ? [3, 5] : [2, 4],
+          fontSize: isMedian ? (veryCompact ? 9 : compact ? 10 : 11) : (veryCompact ? 8 : compact ? 9 : 10),
+          fontWeight: 500,
         },
-        labelLayout: { moveOverlap: "shiftY", hideOverlap: false },
+        labelLayout: isMedian
+          ? endLabelAtLineInside(veryCompact ? 4 : compact ? 6 : 8)
+          : endLabelAtLineRight(veryCompact ? 4 : compact ? 6 : 8),
         z: isMedian ? 4 : 3,
       });
     });
@@ -1432,7 +1380,7 @@ function renderFundamentalsChart(model) {
   option.grid.left = veryCompact ? 48 : compact ? 60 : CHART_GRID.left;
   option.legend.show = false;
   option.grid.top = 36;
-  option.grid.right = veryCompact ? 104 : compact ? 116 : 136;
+  option.grid.right = veryCompact ? 52 : compact ? 64 : 72;
   if (veryCompact) {
     option.xAxis.splitNumber = 4;
     option.xAxis.axisLabel.formatter = (value) => String(new Date(value).getUTCFullYear());
@@ -1476,10 +1424,8 @@ function renderFundamentalsChart(model) {
         fontWeight: 600,
         distance: 8,
         align: "left",
-        backgroundColor: "rgba(5,8,9,0.86)",
-        padding: [2, 4],
       },
-      labelLayout: { moveOverlap: "shiftY", hideOverlap: false },
+      labelLayout: endLabelAtLineRight(veryCompact ? 4 : compact ? 6 : 8),
     };
   });
   const roicData = model.fundamentals
@@ -1499,10 +1445,8 @@ function renderFundamentalsChart(model) {
       fontWeight: 750,
       distance: 8,
       align: "left",
-      backgroundColor: "rgba(5,8,9,0.86)",
-      padding: [2, 4],
     },
-    labelLayout: { moveOverlap: "shiftY", hideOverlap: false },
+    labelLayout: endLabelAtLineRight(veryCompact ? 4 : compact ? 6 : 8),
   });
   setChart("fundamentals-chart", option, { model, priceChart: false, coordinateTooltip: false });
   const methodElement = document.querySelector("#fundamentals-method");
@@ -1681,7 +1625,6 @@ async function saveDashboardPng() {
             [...clonedDocument.querySelectorAll("*")].forEach((element) => {
               if (clonedDocument.defaultView.getComputedStyle(element).backgroundImage === "none") return;
               element.style.setProperty("background-image", "none", "important");
-              if (element.classList.contains("fcf-scenario-rail")) element.style.backgroundColor = "rgba(8, 13, 15, 0.84)";
               if (element.classList.contains("valuation-track-line")) element.style.backgroundColor = "#829095";
             });
           },
@@ -2014,6 +1957,14 @@ function installDashboardNavigation() {
   dom.railHealthDetails?.addEventListener("toggle", () => {
     dom.railDataNotice?.setAttribute("aria-expanded", String(dom.railHealthDetails.open));
   });
+  const healthSummary = dom.railHealthDetails?.querySelector("summary");
+  healthSummary?.addEventListener("click", (event) => {
+    event.preventDefault();
+    dom.railHealthDetails.open = !dom.railHealthDetails.open;
+  });
+  dom.railHealthDetails?.querySelector(".rail-health-close")?.addEventListener("click", () => {
+    dom.railHealthDetails.open = false;
+  });
 
   const sectionByElement = new Map(links.map((link) => {
     const id = link.getAttribute("href").slice(1);
@@ -2165,7 +2116,6 @@ function setStatus(kind, message, elapsed = "") {
   dom.elapsed.textContent = elapsed;
 }
 
-let loadingProgressTimers = [];
 let loadingDetailTimer = null;
 let loadingStartedAt = 0;
 let loadingDetailBase = "";
@@ -2183,78 +2133,34 @@ function setLoadingDetail(message) {
   refreshLoadingDetail();
 }
 
-function setLoadingProgressState(state) {
-  const stages = [...(dom.loadingProgress?.querySelectorAll("li") || [])];
-  const states = {
-    fetching: ["Fetching", "Queued", "Queued"],
-    processing: ["Ready", "Processing", "Queued"],
-    ready: ["Ready", "Ready", "Ready"],
-    review: ["Review", "Not run", "Not run"],
-    idle: ["Queued", "Queued", "Queued"],
-  }[state] || ["Queued", "Queued", "Queued"];
-  stages.forEach((stage, index) => {
-    const stateElement = stage.querySelector(".loading-step-state");
-    const stepState = states[index] || "Queued";
-    const active = state === "fetching" && index === 0
-      || state === "processing" && index === 1;
-    const ready = state === "processing" && index === 0
-      || state === "ready";
-    const review = state === "review" && index === 0;
-    stage.classList.toggle("active", active);
-    stage.classList.toggle("ready", ready);
-    stage.classList.toggle("review", review);
-    stage.classList.toggle("queued", !active && !ready && !review);
-    if (stateElement) stateElement.textContent = stepState;
-    if (active) stage.setAttribute("aria-current", "step");
-    else stage.removeAttribute("aria-current");
-  });
-}
-
-function stopLoadingProgress(finalState = null) {
-  loadingProgressTimers.forEach((timer) => clearTimeout(timer));
-  loadingProgressTimers = [];
+function stopLoadingDetail() {
   if (loadingDetailTimer) clearInterval(loadingDetailTimer);
   loadingDetailTimer = null;
   loadingStartedAt = 0;
   refreshLoadingDetail();
-  if (!dom.loadingProgress) return;
-  if (!finalState) {
-    dom.loadingProgress.hidden = true;
-    setLoadingProgressState("idle");
-    return;
-  }
-  setLoadingProgressState(finalState);
-  loadingProgressTimers = [setTimeout(() => {
-    dom.loadingProgress.hidden = true;
-    setLoadingProgressState("idle");
-  }, 480)];
 }
 
-function startLoadingProgress() {
-  stopLoadingProgress();
+function startLoadingDetail() {
+  stopLoadingDetail();
   loadingStartedAt = performance.now();
   setLoadingDetail("Waiting on Worker · 3 Yahoo endpoints");
   loadingDetailTimer = setInterval(refreshLoadingDetail, 250);
-  if (!dom.loadingProgress) return;
-  dom.loadingProgress.hidden = false;
-  setLoadingProgressState("fetching");
 }
 
-function setLoading(loading, completionState = null) {
+function setLoading(loading) {
   dom.button.disabled = loading;
   dom.button.classList.toggle("loading", loading);
   dom.ticker.disabled = loading;
   dom.workerUrl.disabled = loading;
   updateExportButtonState();
-  if (loading) startLoadingProgress();
-  else stopLoadingProgress(completionState);
+  if (loading) startLoadingDetail();
+  else stopLoadingDetail();
   scheduleMobileDockUpdate();
 }
 
 async function analyze(event) {
   event.preventDefault();
   const started = performance.now();
-  let completionState = "review";
   try {
     const ticker = tickerValue(dom.ticker.value);
     const workerUrl = normalizeWorkerUrl(dom.workerUrl.value);
@@ -2265,7 +2171,6 @@ async function analyze(event) {
     setLoadingDetail("Waiting on Worker · 3 Yahoo endpoints · cache eligible");
     setStatus("loading", `${ticker}: Fetching Yahoo data through the Worker…`);
     const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
-    setLoadingProgressState("processing");
     let payload;
     try {
       payload = await response.json();
@@ -2283,7 +2188,6 @@ async function analyze(event) {
     const failed = Object.entries(payload.data).filter(([, item]) => !item.ok).map(([name, item]) =>
       `${name}${item.status ? ` HTTP ${item.status}` : ""}`
     );
-    completionState = failed.length ? "review" : "ready";
     setLoadingDetail(`${endpointCount} endpoints received · ${cacheStatus} · model rendered`);
     const quoteAuth = payload.data.quote?.auth;
     if (failed.length) {
@@ -2301,7 +2205,7 @@ async function analyze(event) {
     setStatus("error", error instanceof Error ? error.message : String(error), `${(elapsed / 1000).toFixed(1)}s`);
     dom.diagnostic.textContent = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);
   } finally {
-    setLoading(false, completionState);
+    setLoading(false);
   }
 }
 
