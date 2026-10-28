@@ -86,7 +86,7 @@ export function endLabelAtLineRight(offsetX = 8) {
 }
 
 export function commonChartOption(model, yName, chartId = null, coordinateTooltip = false) {
-  const lastDate = model.prices.at(-1).date;
+  const lastDate = model.chartPrices.at(-1).date;
   const priceChart = yName.startsWith("Price");
   return {
     animation: false,
@@ -117,8 +117,9 @@ export function commonChartOption(model, yName, chartId = null, coordinateToolti
     },
     xAxis: {
       type: "time",
-      min: new Date(yearStart(model.prices[0].date)).getTime(),
-      max: new Date(addDays(addYears(lastDate, 1), 110)).getTime(),
+      min: new Date(yearStart(model.chartPrices[0].date)).getTime(),
+      // Leaves room inside the axes for endpoint labels such as "P90 47.3x".
+      max: new Date(addDays(addYears(lastDate, 1), 240)).getTime(),
       boundaryGap: false,
       axisLine: { lineStyle: { color: "#687277" } },
       axisTick: { lineStyle: { color: "#687277" } },
@@ -185,7 +186,7 @@ export function actualPriceSeries(model) {
   return {
     name: "Actual price",
     type: "line",
-    data: model.prices.map((row) => [row.date, row.value]),
+    data: model.chartPrices.map((row) => [row.date, row.value]),
     showSymbol: false,
     lineStyle: { color: COLORS.price, width: 1.9 },
     itemStyle: { color: COLORS.price },

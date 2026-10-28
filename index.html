@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20261028-3">
+  <link rel="stylesheet" href="style.css?v=20261028-5">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script type="module" src="main.js?v=20261028-3"></script>
+  <script type="module" src="main.js?v=20261028-5"></script>
 </head>
 <body>
   <div class="page-shell">
@@ -174,59 +174,6 @@
         </div>
       </section>
 
-      <section id="fcf-section" class="chart-card">
-        <div class="card-heading">
-          <div class="card-copy">
-            <h2>FCF-SBC Yield Bands &amp; One-Year Projected Prices</h2>
-            <p id="fcf-insight" class="chart-insight" hidden></p>
-          </div>
-        </div>
-        <div class="fcf-chart-frame">
-          <div id="fcf-chart" class="chart chart-tall" role="img" aria-label="FCF minus SBC yield bands"></div>
-        </div>
-        <div id="fcf-caption" class="chart-caption"></div>
-      </section>
-
-      <section id="per-section" class="chart-card">
-        <div class="card-heading">
-          <div class="card-copy">
-            <h2>Historical &amp; Forward PER Price Bands</h2>
-            <p id="per-insight" class="chart-insight" hidden></p>
-          </div>
-        </div>
-        <div id="per-chart" class="chart chart-tall" role="img" aria-label="PER price bands"></div>
-        <div id="per-caption" class="chart-caption"></div>
-      </section>
-
-      <section id="psr-section" class="chart-card">
-        <div class="card-heading">
-          <div class="card-copy">
-            <h2>Historical &amp; Forward PSR Price Bands</h2>
-            <p id="psr-insight" class="chart-insight" hidden></p>
-          </div>
-        </div>
-        <div id="psr-chart" class="chart chart-tall" role="img" aria-label="PSR price bands"></div>
-        <div id="psr-caption" class="chart-caption"></div>
-      </section>
-
-      <section id="quality-section" class="chart-card">
-        <div class="card-heading">
-          <div class="card-copy">
-            <h2>Per-Share Fundamentals &amp; ROIC</h2>
-            <p id="fundamentals-insight" class="chart-insight" hidden></p>
-          </div>
-        </div>
-        <div class="fundamentals-legend" aria-label="Fundamentals chart legend">
-          <span><i class="legend-swatch legend-revenue"></i>Revenue/share</span>
-          <span><i class="legend-swatch legend-fcf"></i>FCF-SBC/share</span>
-          <span><i class="legend-swatch legend-eps"></i>GAAP EPS/share</span>
-          <span><i class="legend-swatch legend-shares"></i>Shares</span>
-          <span><i class="legend-swatch legend-roic"></i>ROIC</span>
-        </div>
-        <div id="fundamentals-chart" class="chart chart-fundamentals" role="img" aria-label="Per-share fundamentals and ROIC"></div>
-        <div id="fundamentals-caption" class="chart-caption"></div>
-      </section>
-
       <section id="metrics-section" class="metrics-board" aria-label="Current valuation metrics">
         <article class="metric-section">
           <h2>Current Snapshot</h2>
@@ -244,6 +191,49 @@
           <h2>Balance Sheet &amp; Risk</h2>
           <dl id="balance-metrics" class="metric-list"></dl>
         </article>
+      </section>
+
+      <section id="growth-section" class="chart-card">
+        <div class="card-heading">
+          <div class="card-copy">
+            <h2>1. Growth &amp; Efficiency</h2>
+            <p id="growth-insight" class="chart-insight" hidden></p>
+          </div>
+        </div>
+        <div id="growth-chart" class="chart chart-growth" role="img" aria-label="Revenue growth, margins, Rule of Forty, ROIC, share count and net debt"></div>
+      </section>
+
+      <section id="fcf-section" class="chart-card">
+        <div class="card-heading">
+          <div class="card-copy">
+            <h2>2. FCF-SBC Yield Price Bands</h2>
+            <p id="fcf-insight" class="chart-insight" hidden></p>
+          </div>
+        </div>
+        <div id="fcf-chart" class="chart chart-tall" role="img" aria-label="FCF minus SBC yield price bands"></div>
+        <div id="fcf-caption" class="chart-caption"></div>
+      </section>
+
+      <section id="psr-section" class="chart-card">
+        <div class="card-heading">
+          <div class="card-copy">
+            <h2>3. PSR Price Bands</h2>
+            <p id="psr-insight" class="chart-insight" hidden></p>
+          </div>
+        </div>
+        <div id="psr-chart" class="chart chart-tall" role="img" aria-label="PSR price bands"></div>
+        <div id="psr-caption" class="chart-caption"></div>
+      </section>
+
+      <section id="ev-section" class="chart-card">
+        <div class="card-heading">
+          <div class="card-copy">
+            <h2>4. EV/EBITDA Price Bands</h2>
+            <p id="ev-insight" class="chart-insight" hidden></p>
+          </div>
+        </div>
+        <div id="ev-chart" class="chart chart-tall" role="img" aria-label="EV/EBITDA price bands"></div>
+        <div id="ev-caption" class="chart-caption"></div>
       </section>
 
 

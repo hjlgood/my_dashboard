@@ -1,12 +1,14 @@
 import { MODEL } from "./config.js";
-import { adrRatio, convertSeriesMap, currencyPair, estimateRate, revenueEstimateRate, spotRate } from "./currency.js";
+import { adrRatio, convertSeriesMap, currencyPair, estimateRate, periodRate, revenueEstimateRate, spotRate } from "./currency.js";
 import { addYears, clamp, dateKey, finite, median, quantile, rawNumber, safeDivide, seriesCagr } from "./utils.js";
 import { collectTimeseries, firstSeries, latestValue, meanRecent, nearestAnnualValue, parseChart, parseQuote, quoteTrendRow, sumRecent, unwrapEndpoint } from "./yahoo.js";
 
-export function buildAnnualFundamentals(seriesMap, sharesPerQuotedShare = 1) {
+export function buildAnnualFundamentals(seriesMap, sharesPerQuotedShare = 1, fx = { scale: 1, rates: [] }) {
   const annual = (aliases) => firstSeries(seriesMap, "annual", aliases);
   const revenueRows = annual(["TotalRevenue"]);
-  const sharesRows = annual(["DilutedAverageShares", "BasicAverageShares", "OrdinarySharesNumber", "ShareIssued"]);
+  const sharesRows = annual(["OrdinarySharesNumber", "ShareIssued", "DilutedAverageShares", "BasicAverageShares"]);
+  const normalizedEbitdaRows = annual(["NormalizedEBITDA"]);
+  const ebitdaRows = annual(["EBITDA"]);
   const fcfRows = annual(["FreeCashFlow"]);
   const sbcRows = annual(["StockBasedCompensation"]);
   const epsRows = annual(["DilutedEPS", "BasicEPS"]);
@@ -27,6 +29,9 @@ export function buildAnnualFundamentals(seriesMap, sharesPerQuotedShare = 1) {
     const sbcFound = nearestAnnualValue(sbcRows, date);
     const sbc = noSbcLine ? 0 : sbcFound;
     const eps = nearestAnnualValue(epsRows, date);
+    // Normalized EBITDA excludes unusual items such as impairments; fall back to reported EBITDA.
+    const normalizedEbitda = nearestAnnualValue(normalizedEbitdaRows, date);
+    const ebitda = finite(normalizedEbitda) ? normalizedEbitda : nearestAnnualValue(ebitdaRows, date);
     const operatingIncome = nearestAnnualValue(operatingRows, date);
     const pretaxIncome = nearestAnnualValue(pretaxRows, date);
     const tax = nearestAnnualValue(taxRows, date);
@@ -45,8 +50,12 @@ export function buildAnnualFundamentals(seriesMap, sharesPerQuotedShare = 1) {
       sbcPerShare: sbc / shares,
       adjustedFcfPerShare: (fcf - sbc) / shares,
       eps,
+      ebitdaPerShare: ebitda / shares,
       roic: safeDivide(operatingIncome * (1 - taxRate), investedCapital),
       shares,
+      revenue: revenueRow.value,
+      // Statement-to-quote rate for this row; growth divides it back out so FX moves are not growth.
+      fxRate: fx.scale * periodRate(fx.rates, date),
     };
   }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -76,10 +85,61 @@ export function nonGaapTtmEps(quote) {
   return actuals.length === 4 ? actuals.reduce((sum, row) => sum + row.eps, 0) : NaN;
 }
 
+function statementValueOn(seriesMap, prefix, aliases, date) {
+  for (const alias of aliases) {
+    const value = seriesMap.get(`${prefix}${alias}`)?.find((row) => row.date === date)?.value;
+    if (finite(value)) return value;
+  }
+  return NaN;
+}
+
+// Year-to-date revenue growth versus the same quarters a year earlier, from unconverted statements.
+// NaN when the latest quarter is a fiscal year end (the FY point already covers it) or data is missing.
+export function ytdRevenueGrowth(rawSeries) {
+  const annual = firstSeries(rawSeries, "annual", ["TotalRevenue"]);
+  const quarterly = firstSeries(rawSeries, "quarterly", ["TotalRevenue"]);
+  if (!annual.length || !quarterly.length) return NaN;
+  const fiscalYearEnd = annual.at(-1).date;
+  const currentQuarters = quarterly.filter((row) => row.date > fiscalYearEnd);
+  const elapsed = currentQuarters.length;
+  if (elapsed < 1 || elapsed > 3) return NaN;
+  // Removing the last (4 - elapsed) quarters of the previous fiscal year leaves the same quarters as this YTD.
+  const priorTail = quarterly.filter((row) => row.date <= fiscalYearEnd).slice(-(4 - elapsed));
+  if (priorTail.length !== 4 - elapsed || priorTail.at(-1).date !== fiscalYearEnd) return NaN;
+  if (utcDay(fiscalYearEnd) - utcDay(priorTail[0].date) > 300) return NaN;
+  const sum = (rows) => rows.reduce((total, row) => total + row.value, 0);
+  const priorYtd = annual.at(-1).value - sum(priorTail);
+  return priorYtd > 0 ? sum(currentQuarters) / priorYtd - 1 : NaN;
+}
+
+// Net debt per quoted share at each balance-sheet date, converted at that date's rate (quarterly wins ties).
+export function netDebtPerShareHistory(rawSeries, fx, sharesPerQuotedShare = 1) {
+  const cashAliases = ["CashCashEquivalentsAndShortTermInvestments", "CashAndCashEquivalents"];
+  const shareAliases = ["OrdinarySharesNumber", "ShareIssued"];
+  const values = new Map();
+  for (const prefix of ["annual", "quarterly"]) {
+    const dates = new Set(shareAliases.flatMap((alias) => (rawSeries.get(`${prefix}${alias}`) || []).map((row) => row.date)));
+    for (const date of dates) {
+      const shares = statementValueOn(rawSeries, prefix, shareAliases, date);
+      if (!(shares > 0)) continue;
+      let debt = statementValueOn(rawSeries, prefix, ["TotalDebt"], date);
+      const cash = statementValueOn(rawSeries, prefix, cashAliases, date);
+      // Debt-free issuers often omit the Total Debt row entirely.
+      if (!finite(debt) && finite(cash)) debt = 0;
+      let netDebt = debt - cash;
+      if (!finite(netDebt)) netDebt = statementValueOn(rawSeries, prefix, ["NetDebt"], date);
+      if (!finite(netDebt)) continue;
+      values.set(date, netDebt * fx.scale * spotRate(fx.rates, date) / (shares / sharesPerQuotedShare));
+    }
+  }
+  return [...values].map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export function buildDashboardModel(payload, ticker, fx = { ...currencyPair(payload), rates: [] }) {
   if (fx.fxSymbol && !fx.rates.length) throw new Error(`${fx.fxSymbol} exchange rates are required to convert ${fx.financialCurrency} statements.`);
   const { prices, meta } = parseChart(payload);
-  const seriesMap = convertSeriesMap(collectTimeseries(payload), fx);
+  const rawSeries = collectTimeseries(payload);
+  const seriesMap = convertSeriesMap(rawSeries, fx);
   const statementRate = fx.scale * spotRate(fx.rates);
   const quote = parseQuote(payload);
   const quarterly = (aliases) => firstSeries(seriesMap, "quarterly", aliases);
@@ -99,14 +159,15 @@ export function buildDashboardModel(payload, ticker, fx = { ...currencyPair(payl
     latestValue(quarterly(["OrdinarySharesNumber", "ShareIssued"])),
     quotedShares > 0 ? quotedShares : currentShares,
   );
-  const annualRows = buildAnnualFundamentals(seriesMap, adr);
+  const annualRows = buildAnnualFundamentals(seriesMap, adr, fx);
 
   const revenue = sumRecent(quarterly(["TotalRevenue"]));
   const operatingIncome = sumRecent(quarterly(["OperatingIncome", "TotalOperatingIncomeAsReported"]));
   const netIncome = sumRecent(quarterly(["NetIncome"]));
   const pretaxIncome = sumRecent(quarterly(["PretaxIncome"]));
   const tax = sumRecent(quarterly(["TaxProvision"]));
-  const ebitda = sumRecent(quarterly(["EBITDA", "NormalizedEBITDA"]));
+  const normalizedEbitda = sumRecent(quarterly(["NormalizedEBITDA"]));
+  const ebitda = finite(normalizedEbitda) ? normalizedEbitda : sumRecent(quarterly(["EBITDA"]));
   const interestExpense = Math.abs(sumRecent(quarterly(["InterestExpense", "InterestExpenseNonOperating"])));
   const eps = sumRecent(quarterly(["DilutedEPS", "BasicEPS"]));
   const fcf = sumRecent(quarterly(["FreeCashFlow"]));
@@ -146,8 +207,11 @@ export function buildDashboardModel(payload, ticker, fx = { ...currencyPair(payl
     sbcPerShare: safeDivide(sbc, currentShares),
     adjustedFcfPerShare: currentAdjustedFcfPerShare,
     eps,
+    ebitdaPerShare: safeDivide(ebitda, currentShares),
     roic,
     shares: currentShares,
+    revenue,
+    fxRate: statementRate,
   };
   const merged = new Map(annualRows.map((row) => [row.date, row]));
   const sameDateAnnual = merged.get(ttmRow.date) || {};
@@ -262,12 +326,24 @@ export function buildDashboardModel(payload, ticker, fx = { ...currencyPair(payl
   const averageAssets = meanRecent(balance(["TotalAssets"]));
   const averageEquity = meanRecent(balance(["StockholdersEquity", "CommonStockEquity"]));
   const debtForShare = finite(totalDebt) ? totalDebt : netDebt + cash;
+  // Forward EBITDA/share = TTM EBITDA/share x consensus EPS growth on one basis (vs non-GAAP TTM EPS).
+  const forwardEpsGrowth = analystEps > 0 && rawNonGaapEps * epsEstimateRate > 0
+    ? analystEps / (rawNonGaapEps * epsEstimateRate) - 1
+    : NaN;
+  const ttmEbitdaPerShare = safeDivide(ebitda, currentShares);
+  const chartPrices = prices.filter((row) => row.date >= MODEL.chartStart);
   const cashRunway = finite(fcf) && fcf >= 0
     ? Infinity
     : (finite(cash) && finite(fcf) ? safeDivide(cash, -fcf / 12) : NaN);
 
   return {
     ticker, company, currency, prices, meta, seriesMap, quote, fundamentals,
+    chartPrices: chartPrices.length ? chartPrices : prices,
+    latestRevenueGrowth: ytdRevenueGrowth(rawSeries),
+    netDebtPerShareHistory: netDebtPerShareHistory(rawSeries, fx, adr),
+    analystForwardEbitdaPerShare: ttmEbitdaPerShare > 0 && forwardEpsGrowth > -1
+      ? ttmEbitdaPerShare * (1 + forwardEpsGrowth)
+      : NaN,
     currencyConversion: {
       financialCurrency: fx.financialCurrency,
       quoteCurrency: fx.quoteCurrency,

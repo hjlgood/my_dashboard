@@ -1,6 +1,5 @@
 import { chartInstances } from "./js/chart-common.js";
-import { renderFcfChart, renderFundamentalsChart, renderMultipleChart } from "./js/charts.js";
-import { MODEL } from "./js/config.js";
+import { renderFcfChart, renderGrowthChart, renderValuationBandChart } from "./js/charts.js";
 import { currencyPair, fetchFxRates } from "./js/currency.js";
 import { dom } from "./js/dom.js";
 import { saveDashboardHtml, saveDashboardPng, setExportStatus, updateExportButtonState } from "./js/export.js";
@@ -40,9 +39,16 @@ function renderDashboard(model, payload, responseStatus, elapsedMs, cacheStatus 
   scheduleMobileDockUpdate();
   renderValuationRail(model, payload);
   renderFcfChart(model);
-  renderMultipleChart(model, "per-chart", "per-caption", "eps", "PER", model.analystEps, "Analyst +1Y EPS/share avg");
-  renderMultipleChart(model, "psr-chart", "psr-caption", "revenuePerShare", "PSR", model.analystRevenuePerShare, "Analyst +1Y Revenue/share avg");
-  renderFundamentalsChart(model);
+  renderGrowthChart(model);
+  renderValuationBandChart(model, {
+    id: "psr", field: "revenuePerShare", name: "PSR",
+    analystDriver: model.analystRevenuePerShare, analystLabel: "Analyst +1Y Revenue/share avg",
+  });
+  renderValuationBandChart(model, {
+    id: "ev", field: "ebitdaPerShare", name: "EV/EBITDA", enterpriseValue: true,
+    // The percentage change shown equals the +1Y EPS growth.
+    analystDriver: model.analystForwardEbitdaPerShare, analystLabel: "Est. +1Y EBITDA/share", analystCaveat: "TTM x EPS growth",
+  });
   renderMetrics(model);
   const endpointSummary = Object.fromEntries(Object.entries(payload.data || {}).map(([name, item]) => [name, {
     status: item.status,
@@ -68,7 +74,6 @@ function renderDashboard(model, payload, responseStatus, elapsedMs, cacheStatus 
       baseGrowth: model.baseGrowth,
       growthScenarios: model.growthScenarios,
       exitMultiples: model.exitMultiples,
-      valuationCaps: { maxPeMultiple: MODEL.maxPeMultiple },
       scenarios: model.scenarios,
       reverseImpliedGrowth: model.reverseImpliedGrowth,
       baseImpliedIrr: model.baseImpliedIrr,

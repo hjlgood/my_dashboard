@@ -83,19 +83,19 @@ export function dataCoverageChecks(model) {
       detail: latestPriceDate
         ? `${model.prices.length} observations · through ${latestPriceDate}${finite(ageDays) ? ` · ${ageDays}d old` : ""}`
         : "Price history unavailable",
-      impact: "Current price and charts 1–3",
+      impact: "Current price and charts 2–4",
       ok: model.prices.length >= 30 && finite(ageDays) && ageDays <= 7,
     },
     {
       name: "Fundamentals",
       detail: `${model.fundamentals.length} periods · ${baselineDate ? `common baseline ${baselineDate}` : "per-series fallback"}`,
-      impact: "Chart 4 and historical valuation drivers",
+      impact: "All charts and historical valuation drivers",
       ok: model.fundamentals.length >= 5 && Boolean(baselineDate),
     },
     {
       name: "Analyst estimates",
       detail: estimateDetail,
-      impact: "Forward PER and PSR regions",
+      impact: "Forward regions of the PSR and EV/EBITDA bands",
       ok: hasEpsEstimate && hasRevenueEstimate,
     },
     {
