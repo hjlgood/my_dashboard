@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20261028-1">
+  <link rel="stylesheet" href="style.css?v=20261028-3">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script src="main.js?v=20261028-1" defer></script>
+  <script type="module" src="main.js?v=20261028-3"></script>
 </head>
 <body>
   <div class="page-shell">
@@ -75,14 +75,6 @@
       </div>
 
       <div class="dashboard-tools">
-        <nav class="section-nav" aria-label="Dashboard sections">
-          <a href="#fcf-section">01 FCF</a>
-          <a href="#per-section">02 PER</a>
-          <a href="#psr-section">03 PSR</a>
-          <a href="#quality-section">04 Quality</a>
-          <a href="#metrics-section">05 Metrics</a>
-          <a href="#methodology-section">06 Method</a>
-        </nav>
         <div class="export-tools" aria-label="Export dashboard">
           <span class="export-tools-label">Export</span>
           <button id="save-png-button" class="export-button" type="button" aria-label="Save dashboard as PNG">Save PNG</button>
@@ -254,27 +246,6 @@
         </article>
       </section>
 
-      <details id="methodology-section" class="methodology-panel">
-        <summary>Methodology &amp; interpretation</summary>
-        <div class="methodology-grid">
-          <section>
-            <h3>FCF-SBC scenarios</h3>
-            <p>Yield bands: 3%, 4%, 5%, 6%, 8%. Bear is red, Base is white, and Bull is green. The scenario rail shows the implied one-year return and target price.</p>
-          </section>
-          <section>
-            <h3>PER bands</h3>
-            <p>Historical price bands use EPS-based percentiles. PER above 100x is excluded; the forward region uses the analyst +1Y EPS/share estimate when available.</p>
-          </section>
-          <section>
-            <h3>PSR bands</h3>
-            <p>Historical price bands use revenue/share percentiles. The forward region uses the analyst +1Y revenue/share estimate when available.</p>
-          </section>
-          <section>
-            <h3>Per-share fundamentals</h3>
-            <p id="fundamentals-method">Common baseline when available · ROIC = right axis</p>
-          </section>
-        </div>
-      </details>
 
       <details id="diagnostics-section" class="diagnostics">
         <summary>Data source, Yahoo authentication &amp; diagnostics</summary>
