@@ -1436,17 +1436,21 @@ body:not(.dashboard-ready) .dashboard-tools {
 
 .metrics-board {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  padding: 17px 10px 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 4px 10px;
 }
 
 .metric-section {
   min-width: 0;
-  padding: 0 20px;
+  padding: 15px 20px 16px;
 }
 
-.metric-section + .metric-section {
+.metric-section:nth-child(even) {
   border-left: 1px solid #343b3e;
+}
+
+.metric-section:nth-child(n + 3) {
+  border-top: 1px solid #343b3e;
 }
 
 .metric-section h2 {
@@ -1482,6 +1486,8 @@ body:not(.dashboard-ready) .dashboard-tools {
 .metric-list dd.data-blue { color: var(--data-blue); }
 .metric-list dd.green { color: var(--green); }
 .metric-list dd.red { color: var(--red); }
+.metric-list dd.roic { color: #aa9abb; }
+.metric-list dd.muted { color: var(--muted-2); }
 
 .diagnostics {
   color: #9ba6a9;
@@ -1760,9 +1766,12 @@ body:not(.dashboard-ready) .dashboard-tools {
     padding: 13px 14px;
   }
 
+  .metric-section:nth-child(even) {
+    border-left: 0;
+  }
+
   .metric-section + .metric-section {
     border-top: 1px solid #343b3e;
-    border-left: 0;
   }
 }
 

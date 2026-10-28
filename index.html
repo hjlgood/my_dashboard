@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Yahoo Finance data-driven stock valuation dashboard">
   <title>Stock Value Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=20260830-14">
+  <link rel="stylesheet" href="style.css?v=20261028-1">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" defer></script>
-  <script src="main.js?v=20260830-14" defer></script>
+  <script src="main.js?v=20261028-1" defer></script>
 </head>
 <body>
   <div class="page-shell">
@@ -237,16 +237,20 @@
 
       <section id="metrics-section" class="metrics-board" aria-label="Current valuation metrics">
         <article class="metric-section">
+          <h2>Current Snapshot</h2>
+          <dl id="snapshot-metrics" class="metric-list"></dl>
+        </article>
+        <article class="metric-section">
+          <h2>Forward &amp; Long-Term</h2>
+          <dl id="forward-metrics" class="metric-list"></dl>
+        </article>
+        <article class="metric-section">
           <h2>Profitability &amp; Quality</h2>
           <dl id="profitability-metrics" class="metric-list"></dl>
         </article>
         <article class="metric-section">
           <h2>Balance Sheet &amp; Risk</h2>
           <dl id="balance-metrics" class="metric-list"></dl>
-        </article>
-        <article class="metric-section">
-          <h2>Reverse Value Model</h2>
-          <dl id="reverse-metrics" class="metric-list"></dl>
         </article>
       </section>
 

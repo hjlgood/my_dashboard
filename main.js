@@ -304,6 +304,31 @@ function buildAnnualFundamentals(seriesMap) {
   }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function trailingDividendYield(payload, quote, prices, currentPrice) {
+  const events = unwrapEndpoint(payload, "chart")?.chart?.result?.[0]?.events;
+  if (events) {
+    const start = addYears(prices.at(-1).date, -1);
+    const total = Object.values(events.dividends || {})
+      .filter((row) => finite(row?.date) && dateKey(row.date * 1000) > start)
+      .reduce((sum, row) => sum + (finite(rawNumber(row.amount)) ? rawNumber(row.amount) : 0), 0);
+    return safeDivide(total, currentPrice);
+  }
+  const detail = quote?.summaryDetail;
+  const fallback = rawNumber(detail?.trailingAnnualDividendYield);
+  return finite(fallback) ? fallback : rawNumber(detail?.dividendYield);
+}
+
+function nonGaapTtmEps(quote) {
+  const history = quote?.earningsHistory?.history;
+  if (!Array.isArray(history)) return NaN;
+  const actuals = history
+    .map((row) => ({ quarter: rawNumber(row?.quarter), eps: rawNumber(row?.epsActual) }))
+    .filter((row) => finite(row.eps))
+    .sort((a, b) => (finite(a.quarter) ? a.quarter : 0) - (finite(b.quarter) ? b.quarter : 0))
+    .slice(-4);
+  return actuals.length === 4 ? actuals.reduce((sum, row) => sum + row.eps, 0) : NaN;
+}
+
 function buildDashboardModel(payload, ticker) {
   const { prices, meta } = parseChart(payload);
   const seriesMap = collectTimeseries(payload);
@@ -477,6 +502,10 @@ function buildDashboardModel(payload, ticker) {
   const receivables = latestValue(balance(["Receivables", "AccountsReceivable"]));
   const averageAssets = meanRecent(balance(["TotalAssets"]));
   const averageEquity = meanRecent(balance(["StockholdersEquity", "CommonStockEquity"]));
+  const debtForShare = finite(totalDebt) ? totalDebt : netDebt + cash;
+  const cashRunway = finite(fcf) && fcf >= 0
+    ? Infinity
+    : (finite(cash) && finite(fcf) ? safeDivide(cash, -fcf / 12) : NaN);
 
   return {
     ticker, company, currency, prices, meta, seriesMap, quote, fundamentals,
@@ -488,6 +517,13 @@ function buildDashboardModel(payload, ticker) {
     forwardRevenueGrowth, baseGrowth, growthScenarios, exitMultiples, scenarios,
     secondStageGrowth, baseTenYearCagr, reverseImpliedGrowth, baseImpliedIrr,
     metrics: {
+      adjustedFcfYield: safeDivide(adjustedFcf, marketCap),
+      dividendYield: trailingDividendYield(payload, quote, prices, currentPrice),
+      per: eps > 0 ? currentPrice / eps : NaN,
+      nonGaapPer: safeDivide(currentPrice, nonGaapTtmEps(quote)),
+      forwardPer: analystEps > 0 ? currentPrice / analystEps : NaN,
+      psr: safeDivide(currentPrice, safeDivide(revenue, currentShares)),
+      pbr: safeDivide(marketCap, equity),
       roe: safeDivide(netIncome, averageEquity),
       roa: safeDivide(netIncome, averageAssets),
       roic,
@@ -496,7 +532,9 @@ function buildDashboardModel(payload, ticker) {
       sbcMargin: safeDivide(sbc, revenue),
       shareCountCagr: seriesCagr(fundamentals, "shares"),
       netDebt,
-      debtPerShare: safeDivide(totalDebt, currentShares),
+      debtPerShare: safeDivide(debtForShare, currentShares),
+      cashPerShare: safeDivide(cash, currentShares),
+      cashRunway,
       netDebtToEbitda: safeDivide(netDebt, ebitda),
       interestCoverage: safeDivide(operatingIncome, interestExpense),
       currentRatio: safeDivide(currentAssets, currentLiabilities),
@@ -1729,31 +1767,53 @@ async function saveDashboardHtml() {
   }
 }
 
+function cashRunwayEntry(months) {
+  if (months === Infinity) return ["FCF+ (Safe)", "green"];
+  if (!finite(months)) return ["N/A", "muted"];
+  const text = `${formatNumber(months, 1)} mo`;
+  if (months >= 24) return [text, "green"];
+  return months >= 12 ? [text, ""] : [text, "red"];
+}
+
 function renderMetrics(model) {
+  const { metrics } = model;
+  const baseMinusImplied = model.baseTenYearCagr - model.reverseImpliedGrowth;
+  const analystTarget = finite(model.analystPriceTarget)
+    ? `${formatMoney(model.analystPriceTarget, model.currency)} (${forwardChange(model.currentPrice, model.analystPriceTarget)})`
+    : "N/A";
+  setMetrics("snapshot-metrics", [
+    ["FCF-SBC yield", formatPercent(metrics.adjustedFcfYield), metrics.adjustedFcfYield > 0.05 ? "green" : ""],
+    ["Dividend yield", formatPercent(metrics.dividendYield)],
+    ["PER (GAAP)", formatMultiple(metrics.per)],
+    ["PER (non-GAAP)", formatMultiple(metrics.nonGaapPer)],
+    ["Forward PER (+1Y EPS)", formatMultiple(metrics.forwardPer)],
+    ["PSR", formatMultiple(metrics.psr)],
+    ["PBR", formatMultiple(metrics.pbr)],
+  ]);
+  setMetrics("forward-metrics", [
+    ["Analyst 1Y target", analystTarget],
+    ["Implied 10Y growth", formatPercent(model.reverseImpliedGrowth)],
+    ["Base implied IRR", formatPercent(model.baseImpliedIrr)],
+    ["Base minus implied", finite(baseMinusImplied) ? `${formatPercent(baseMinusImplied, 1, true)}p` : "N/A", baseMinusImplied > 0 ? "green" : ""],
+    ["Year-10 P/(FCF-SBC)", formatMultiple(model.exitMultiples.Base)],
+  ]);
   setMetrics("profitability-metrics", [
-    ["ROE", formatPercent(model.metrics.roe)],
-    ["ROA", formatPercent(model.metrics.roa)],
-    ["ROIC", formatPercent(model.metrics.roic)],
-    ["WACC", formatPercent(MODEL.requiredReturn)],
-    ["FCF-SBC margin", formatPercent(model.metrics.adjustedFcfMargin)],
-    ["Net margin", formatPercent(model.metrics.netMargin)],
-    ["SBC margin", formatPercent(model.metrics.sbcMargin)],
-    ["Share-count CAGR", formatPercent(model.metrics.shareCountCagr, 1, true)],
+    ["ROE", formatPercent(metrics.roe)],
+    ["ROA", formatPercent(metrics.roa)],
+    ["ROIC", formatPercent(metrics.roic), "roic"],
+    ["FCF-SBC margin", formatPercent(metrics.adjustedFcfMargin)],
+    ["Net margin", formatPercent(metrics.netMargin)],
+    ["SBC margin", formatPercent(metrics.sbcMargin), metrics.sbcMargin > 0.10 ? "red" : ""],
+    ["Share-count CAGR", formatPercent(metrics.shareCountCagr, 1, true)],
   ]);
   setMetrics("balance-metrics", [
-    ["Net debt", formatCompactMoney(model.metrics.netDebt, model.currency)],
-    ["Debt / Share", formatMoney(model.metrics.debtPerShare, model.currency)],
-    ["Net debt / EBITDA", formatMultiple(model.metrics.netDebtToEbitda, 2)],
-    ["Interest coverage", formatMultiple(model.metrics.interestCoverage)],
-    ["Current ratio", formatMultiple(model.metrics.currentRatio, 2)],
-    ["Quick ratio", formatMultiple(model.metrics.quickRatio, 2)],
-  ]);
-  setMetrics("reverse-metrics", [
-    ["Implied 10Y FCF-SBC growth", formatPercent(model.reverseImpliedGrowth), "data-blue"],
-    ["Base implied IRR", formatPercent(model.baseImpliedIrr)],
-    ["Base 10Y FCF-SBC CAGR", formatPercent(model.baseTenYearCagr)],
-    ["Base minus implied", finite(model.baseTenYearCagr) && finite(model.reverseImpliedGrowth) ? `${formatPercent(model.baseTenYearCagr - model.reverseImpliedGrowth, 1, true)}p` : "N/A", "green"],
-    ["Year-10 P/(FCF-SBC)", formatMultiple(model.exitMultiples.Base)],
+    ["Debt / Share", formatMoney(metrics.debtPerShare, model.currency)],
+    ["Cash / Share", formatMoney(metrics.cashPerShare, model.currency)],
+    ["Net debt / EBITDA", formatMultiple(metrics.netDebtToEbitda, 2)],
+    ["Interest coverage", formatMultiple(metrics.interestCoverage)],
+    ["Current ratio", formatMultiple(metrics.currentRatio, 2)],
+    ["Quick ratio", formatMultiple(metrics.quickRatio, 2)],
+    ["Cash runway", ...cashRunwayEntry(metrics.cashRunway)],
   ]);
 }
 
